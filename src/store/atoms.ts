@@ -1,10 +1,10 @@
 import { atom } from 'jotai'
 import { atomWithStorage } from 'jotai/utils'
-import type { ResponsiveLayouts } from 'react-grid-layout'
+import type { Layouts } from 'react-grid-layout'
 import { defaultLayouts, WIDGET_REGISTRY } from '../layout/defaults'
 
 // Layout state — persisted to localStorage
-export const layoutsAtom = atomWithStorage<ResponsiveLayouts>('layouts', defaultLayouts)
+export const layoutsAtom = atomWithStorage<Layouts>('layouts', defaultLayouts)
 
 // Current breakpoint
 export const currentBreakpointAtom = atom<string>('lg')

@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { Box, Typography } from '@mui/material'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Box } from '@mui/material'
 
 interface LogEntry {
   time: string
@@ -41,52 +41,59 @@ function getTimestamp(): string {
 
 export default function ConsoleWidget() {
   const [logs, setLogs] = useState<LogEntry[]>(initialLogs)
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const isAtBottomRef = useRef(true)
+
+  // Track if user is scrolled to bottom
+  const handleScroll = useCallback(() => {
+    const el = containerRef.current
+    if (!el) return
+    isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 20
+  }, [])
 
   useEffect(() => {
     const interval = setInterval(() => {
       const mock = mockMessages[Math.floor(Math.random() * mockMessages.length)]
-      setLogs((prev) => [...prev.slice(-100), { time: getTimestamp(), ...mock }])
+      setLogs((prev) => {
+        if (prev.length >= 100) {
+          const next = prev.slice(-99)
+          next.push({ time: getTimestamp(), ...mock })
+          return next
+        }
+        return [...prev, { time: getTimestamp(), ...mock }]
+      })
     }, 3000 + Math.random() * 4000)
     return () => clearInterval(interval)
   }, [])
 
+  // Auto-scroll only if already at bottom — no smooth animation
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (isAtBottomRef.current && containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight
+    }
   }, [logs])
 
   return (
-    <Box sx={{ p: 0.5, overflow: 'auto', height: '100%', bgcolor: '#0a0a0a' }}>
+    <Box
+      ref={containerRef}
+      onScroll={handleScroll}
+      sx={{ p: 0.5, overflow: 'auto', height: '100%', bgcolor: '#0a0a0a' }}
+    >
       {logs.map((log, i) => (
-        <Typography
-          key={i}
-          component="div"
-          sx={{
-            fontSize: '0.7rem',
-            fontVariantNumeric: 'tabular-nums',
-            lineHeight: 1.5,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <Box component="span" sx={{ color: 'rgba(0,255,0,0.4)', mr: 0.5 }}>
-            {log.time}
-          </Box>
-          <Box
-            component="span"
-            sx={{
+        <div key={i} className="console-line">
+          <span style={{ color: 'rgba(0,255,0,0.4)', marginRight: 4 }}>{log.time}</span>
+          <span
+            style={{
               color: LEVEL_COLORS[log.level],
-              mr: 0.5,
+              marginRight: 4,
               fontWeight: log.level === 'ERROR' ? 700 : 400,
             }}
           >
             [{log.level}]
-          </Box>
-          <Box component="span" sx={{ color: '#00ff00' }}>
-            {log.msg}
-          </Box>
-        </Typography>
+          </span>
+          <span style={{ color: '#00ff00' }}>{log.msg}</span>
+        </div>
       ))}
-      <div ref={bottomRef} />
     </Box>
   )
 }

@@ -87,7 +87,7 @@ const orderbook = await invoke<OrderbookData>('get_orderbook', { exchange: 'bina
 | Package | Minimum | Note |
 |---------|---------|------|
 | React | Latest from `vite@latest` scaffold | Whatever `npm create vite@latest` gives |
-| react-grid-layout | `^2.x` | v1.x (used in rgl-practice) is outdated |
+| react-grid-layout | `1.4.4` | **DO NOT upgrade to v2.x** — v2 has severe resize jank (see Performance Notes) |
 | @mui/material | `^7.x` | Matches premium-table-refactored |
 | jotai | Latest | |
 | react-virtuoso | Latest | |
@@ -683,28 +683,183 @@ Exchange WSs ──→ Rust (tokio) ──→ Tauri Event ──→ React State 
 
 | # | Task | Phase | Status |
 |---|------|-------|--------|
-| 1 | Set up new project (Vite + React + MUI 7 + Jotai) | 1 | TODO |
-| 2 | Port react-grid-layout system from rgl-practice | 1 | TODO |
-| 3 | Apply unified design system (theme, fonts, global styles) | 1 | TODO |
-| 4 | Import ArbitrageWidget from premium-table-refactored | 1 | TODO |
+| 1 | Set up new project (Vite + React + MUI 7 + Jotai) | 1 | DONE |
+| 2 | Port react-grid-layout system from rgl-practice | 1 | DONE |
+| 3 | Apply unified design system (theme, fonts, global styles) | 1 | DONE |
+| 4 | Import ArbitrageWidget from premium-table-refactored | 1 | DONE (mock impl, package import later) |
 | 5 | ~~Refactor usdt-krw-calculator → publish as package~~ | 1 | SKIPPED — done in separate repo |
-| 6 | Build OrderWidget (mock data) | 1 | TODO |
-| 7 | Build BalanceWidget (mock data) | 1 | TODO |
-| 8 | Build OrderbookWidget (mock data) | 1 | TODO |
-| 9 | Build ChartWidget (lightweight-charts) | 1 | TODO |
-| 10 | Build ConsoleWidget (permanent, operation log) | 1 | TODO |
-| 11 | Build TransferWidget (cross-exchange transfer UI, mock) | 1 | TODO |
-| 12 | Build DepositWidget (deposit address display, mock) | 1 | TODO |
-| 13 | Build WithdrawWidget (withdrawal form, mock) | 1 | TODO |
-| 14 | Build WalletWidget (DEX wallet management UI, mock) | 1 | TODO |
-| 15 | Build SwapWidget (DEX swap interface, mock) | 1 | TODO |
-| 16 | Build MarginWidget (spot↔margin transfer, borrow/repay, mock) | 1 | TODO |
-| 17 | Build MemoWidget (persistent user notes) | 1 | TODO |
-| 18 | Build ShortcutWidget (quick links to exchange pages) | 1 | TODO |
+| 6 | ~~Build OrderWidget (mock data)~~ | 1 | MERGED → ExchangeWidget |
+| 7 | ~~Build BalanceWidget (mock data)~~ | 1 | MERGED → ExchangeWidget |
+| 8 | Build OrderbookWidget (mock data) | 1 | DONE |
+| 9 | Build ChartWidget (lightweight-charts) | 1 | SKIPPED — not priority |
+| 10 | Build ConsoleWidget (permanent, operation log) | 1 | DONE |
+| 11 | ~~Build TransferWidget~~ | 1 | MERGED → ExchangeWidget |
+| 12 | ~~Build DepositWidget~~ | 1 | MERGED → ExchangeWidget |
+| 13 | ~~Build WithdrawWidget~~ | 1 | MERGED → ExchangeWidget |
+| 14 | Build WalletWidget (DEX wallet management UI, mock) | 1 | DONE |
+| 15 | Build SwapWidget (DEX swap interface, mock) | 1 | DONE |
+| 16 | ~~Build MarginWidget~~ | 1 | MERGED → ExchangeWidget |
+| 17 | Build MemoWidget (persistent user notes) | 1 | DONE |
+| 18 | Build ShortcutWidget (quick links to exchange pages) | 1 | DONE |
 | 19 | Build ExchangeCalcWidget (import from published package) | 1 | TODO — blocked until package is published |
 | 20 | Workspace save/load profiles | 1 | TODO |
-| 21 | AppBar + Drawer (port from rgl-practice) | 1 | TODO |
+| 21 | AppBar + Drawer (port from rgl-practice) | 1 | DONE |
+| 22 | **Build ExchangeWidget** (merged: order, deposit, withdraw, transfer, margin) | 1 | DONE |
 | 12–18 | Tauri integration, Rust backend, DEX, more exchanges | 2–3+ | OUT OF SCOPE — will be done in a separate Tauri project |
+
+---
+
+## ExchangeWidget Architecture
+
+### Rationale
+
+Order, deposit, withdraw, transfer, and margin are all **exchange-scoped operations**. Having separate widgets for each wastes screen space and forces redundant exchange selection. Merged into a single `ExchangeWidget` with exchange tabs + operation sub-tabs, matching the legacy WTS (`teamLVR_API_Trading_System`) approach.
+
+### Exchange Order (canonical, used everywhere)
+
+Upbit → Bithumb → Binance → Bybit → Coinbase → OKX
+
+### Feature Matrix
+
+| Exchange | Order | Deposit | Withdraw | Transfer | Margin |
+|----------|-------|---------|----------|----------|--------|
+| Upbit | yes | yes | yes | — | — |
+| Bithumb | yes | yes | yes | — | — |
+| Binance | yes | yes | yes | spot ↔ margin(cross) ↔ margin(isolated) ↔ futures | yes (isolated) |
+| Bybit | yes | yes | yes | spot ↔ margin(cross) ↔ margin(isolated) ↔ futures | yes |
+| Coinbase | yes | yes | yes | — | — |
+| OKX | yes | yes | yes | spot ↔ margin(cross) ↔ margin(isolated) ↔ futures | yes |
+
+### Layout
+
+```
+┌─ ExchangeWidget ──────────────────────────────────────────────────────┐
+│  [Upbit] [Bithumb] [Binance] [Bybit] [Coinbase] [OKX]               │
+│  Asset: [BTC/USDT ▼]                                                  │
+│ ┌────────────┬──────────────┬────────────────────────────────────────┐│
+│ │  BALANCE   │  ORDER       │  [Deposit] [Withdraw] [Transfer]      ││
+│ │  (always)  │  (always)    │  [Margin]                              ││
+│ │            │              │                                        ││
+│ │  Asset tbl │  Buy/Sell    │  (selected tab content)                ││
+│ │  Free      │  Limit/Mkt  │                                        ││
+│ │  Locked    │  Price/Qty   │                                        ││
+│ │  USD       │  [Submit]    │                                        ││
+│ └────────────┴──────────────┴────────────────────────────────────────┘│
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+- **Row 1**: Exchange tabs (Upbit → Bithumb → Binance → Bybit → Coinbase → OKX)
+- **Row 2**: Asset/pair selector (shared context across all three columns)
+- **Column 1 (30%)**: Balance — always visible, per-exchange asset table
+- **Column 2 (30%)**: Order — always visible, buy/sell form using selected pair
+- **Column 3 (40%)**: Tabbed operations (Deposit, Withdraw, Transfer, Margin) — conditionally available per exchange
+- Widget is naturally wide (minW: 6 cols on lg) to accommodate the three-column layout
+
+### Structure
+
+```
+ExchangeWidget/
+├── index.tsx            # Shell: exchange tabs, pair selector, two-column layout
+├── types.ts             # ExchangeConfig, feature flags, canonical EXCHANGES array
+└── tabs/
+    ├── OrderTab.tsx      # Buy/sell form (receives pair from parent)
+    ├── BalanceTab.tsx    # Per-exchange asset balances
+    ├── DepositTab.tsx    # Address display + copy (networks vary per exchange)
+    ├── WithdrawTab.tsx   # Withdraw form (networks + fees vary per exchange)
+    ├── TransferTab.tsx   # Internal transfer (spot/margin/futures wallets)
+    └── MarginTab.tsx     # Borrow/repay (pairs vary per exchange)
+```
+
+Sub-tabs are conditionally rendered based on `ExchangeConfig.features`. Switching exchange automatically resets pair and operation tab if current ones are unavailable.
+
+---
+
+## Performance Notes
+
+### CRITICAL: react-grid-layout v2.2.2 resize is not smooth — use v1.4.4 (2026-02-15)
+
+**Symptom:** With react-grid-layout v2.2.2 + React 19.2.0, widget resize is visibly laggy — the grid does not follow the mouse cursor in real-time when dragging rapidly. With v1.4.4 (same React 19.2.0, same widgets, same code otherwise), resize is smooth.
+
+**What was tried before downgrading (all failed with v2):**
+- `positionStrategy={absoluteStrategy}` and default CSS transform strategy
+- `React.memo` on widget content
+- Ref-buffering layout changes (skip Jotai updates during resize)
+- Debounce tuning (10ms, 100ms, 200ms)
+- CSS `contain: layout style paint` on grid items
+- CSS transition overrides (200ms → 50ms)
+- Plain `div` instead of MUI `Box` for grid items
+- Module-level memoized config objects
+- Replacing `useContainerWidth` hook with `window.innerWidth`
+- EmptyTestWidget (empty div replacing all widget content) — still laggy, confirming issue is inside RGL v2 itself
+
+**Fix:** Downgraded to `react-grid-layout@1.4.4`. Resize became immediately smooth.
+
+**Root cause — profiled (2026-02-15):** v2's hooks-based rewrite has **O(n) per-widget overhead** during resize that v1's class-based components do not. Confirmed via controlled A/B benchmark (`../rgl-performance-test`) using programmatic resize (120 frames, 300px diagonal, `requestAnimationFrame`-synchronized). Both apps are identical except RGL version — no MUI, no Jotai, plain colored divs.
+
+| Widgets | V1 Avg (ms) | V2 Avg (ms) | V2 overhead | V2 Jank % |
+|---------|-------------|-------------|-------------|-----------|
+| 4 | 6.97 | 6.97 | 0% | 0% |
+| 8 | 6.95 | 7.39 | +6% | 0% |
+| 12 | 7.09 | 8.29 | +17% | 0% |
+| 16 | 7.17 | 8.59 | +20% | 0% |
+| 24 | 7.31 | 10.99 | +50% | 1.8% |
+| 32 | 8.04 | 13.51 | +68% | 14.9–21.1% |
+
+V1 stays flat (~7ms) regardless of widget count. V2 scales linearly — each additional widget adds ~0.2ms per frame during resize. At 10+ widgets (this app's range), the overhead becomes perceptible. At 32 widgets, v2 drops 15–21% of frames (>16.67ms).
+
+No upstream issue exists for this specific problem as of 2026-02-15. Related: [react-resizable#237](https://github.com/react-grid-layout/react-resizable/issues/237) (resize handle cursor desync under load, open).
+
+**Recommendation:** Stay on v1.4.4 until v2 resize smoothness is confirmed fixed. v1.4.4 works with React 19.2.0 without issues. Re-benchmark after any v2 minor release using `../rgl-performance-test`.
+
+---
+
+### Issue: App becomes laggy after 5-10 minutes (observed 2026-02-15)
+
+**Symptom:** After initial load + 5-10 minutes of idle, the web app becomes extremely sluggish. For comparison, BitMEX (also built with react-grid-layout, with live price/orderbook/chart updates) does not exhibit this.
+
+**Root cause hypothesis — Emotion style accumulation (memory leak):**
+
+MUI's `sx` prop uses Emotion CSS-in-JS under the hood. When an `sx` prop contains a **dynamic value** (e.g. `sx={{ width: \`${pct}%\` }}` or `sx={{ bgcolor: calcColor(val) }}`), Emotion generates a **new unique CSS class name** for each distinct value and injects a new `<style>` tag into `<head>`. These style tags accumulate and are never garbage collected.
+
+**The math on why this kills performance:**
+
+| Widget | Dynamic `sx` calls per tick | Tick interval | Style injections/min |
+|--------|---------------------------|---------------|---------------------|
+| OrderbookWidget | 30 rows × `width: ${pct}%` | 1.5s | ~1,200 |
+| ArbitrageWidget | 12 rows × `bgcolor: calc()` | 2.0s | ~360 |
+| ConsoleWidget | N/A (text only) | 3-7s | ~0 (but `scrollIntoView` layout thrash) |
+
+After 10 minutes: **~15,000+ orphaned `<style>` tags** in `<head>`, each requiring browser CSSOM processing.
+
+**Fix applied (partial — needs validation):**
+
+1. **OrderbookWidget** — Replaced MUI `Box` + `sx` with plain `div`/`span` + inline `style={}` for all dynamic values. Inline styles bypass Emotion entirely (set directly on DOM element, no class generation). Wrapped `RowLine` in `React.memo`.
+
+2. **ArbitrageWidget** — Replaced MUI `Table`/`TableCell` with plain HTML `<table>/<tr>/<td>` + inline `style={}` for dynamic `bgcolor`. Wrapped `ArbRow` in `React.memo`. Memoized sort with `useMemo`.
+
+3. **ConsoleWidget** — Replaced `scrollIntoView({ behavior: 'smooth' })` (triggers expensive smooth scroll animation + layout reflow) with direct `scrollTop` assignment. Replaced MUI `Typography`/`Box` spans with plain `div`/`span` + inline styles. Added scroll-position tracking to only auto-scroll when user is at bottom.
+
+**Principle for future widgets with frequent updates:**
+- Static styles → CSS classes (GlobalStyles) or MUI `sx` (computed once)
+- Dynamic styles that change on every render → inline `style={}` prop (bypasses Emotion)
+- Never use `sx={{ someProp: dynamicValue }}` in a hot render path
+
+**Status:** Fix applied, needs real-world validation (leave app running 10+ min and check). If still laggy, investigate further:
+- RGL layout recalculation on child re-render
+- Jotai `atomWithStorage` serialization overhead
+- React DevTools Profiler to identify cascade re-renders
+
+### Per-Widget Performance Considerations
+
+Each widget may have unique performance characteristics depending on its update pattern. When implementing or modifying any widget, evaluate:
+
+1. **Does it use timers (`setInterval`, `setTimeout`)?** — Dynamic values in `sx` props will leak Emotion styles. Use inline `style={}` instead.
+2. **Does it receive high-frequency external data (WebSocket, polling)?** — Same rule: inline `style` for anything that changes per-tick. Wrap row/cell components in `React.memo`.
+3. **Does it render large lists (100+ items)?** — Use `react-virtuoso` for windowed rendering. Already installed as a dependency.
+4. **Does it trigger layout reflow?** — Avoid `scrollIntoView({ behavior: 'smooth' })`, `getBoundingClientRect()` in hot paths. Use direct `scrollTop`/`scrollLeft` assignment.
+5. **Does it sort/filter data on every render?** — Wrap in `useMemo` with proper deps.
+
+**Rule of thumb:** If a widget updates more than once every 5 seconds, treat its render path as "hot" and avoid MUI styled components (`Box`, `Typography`, `Table*`) with dynamic `sx` props in favor of plain HTML + inline styles + CSS classes.
 
 ---
 
@@ -915,7 +1070,7 @@ Read HANDOFF.md at session start. Update HANDOFF.md before session close with wh
 
 ## Architecture
 
-- React + TypeScript + Vite + MUI 7 + Jotai + react-grid-layout v2
+- React + TypeScript + Vite + MUI 7 + Jotai + react-grid-layout v1.4.4 (DO NOT upgrade to v2)
 - All widgets in `src/components/widgets/`
 - No API calls — mock data only (API in Rust/Tauri, Phase 2)
 - Design system: see HANDOFF.md Design System section
@@ -1251,3 +1406,36 @@ Adding widgets discovered from legacy features:
 - [ ] **ConsoleWidget** — timestamped operation log, scrollable history
 - [ ] **MemoWidget** — persistent user notes (or integrate into Drawer)
 - [ ] **ShortcutWidget** — quick links to exchange trading pages by ticker
+
+---
+
+## Session Log
+
+### 2026-02-15: RGL v1 vs v2 Performance Benchmark
+
+**Goal:** Quantify the resize performance difference between react-grid-layout v1.4.4 and v2.2.2, which was previously observed but not profiled.
+
+**What was built:**
+
+Created `../rgl-performance-test` — a standalone npm workspaces monorepo ([GitHub](https://github.com/gloomydumber/rgl-performance-test)) with two identical Vite apps:
+- `packages/v1` — RGL 1.4.4, port 5181 (v1 API: `WidthProvider`, `draggableHandle`, `useCSSTransforms`)
+- `packages/v2` — RGL 2.2.2, port 5182 (v2 API: `useContainerWidth`, `dragConfig`, `resizeConfig`, `absoluteStrategy`)
+
+Both apps have identical widget content (plain colored divs), same grid config (breakpoints/cols/rowHeight matching wts-frontend), no MUI, no Jotai — pure RGL isolation.
+
+**Benchmark tool:** Built-in programmatic resize that fires synthetic `MouseEvent`/`PointerEvent` on the resize handle, dispatching one `mousemove` per `requestAnimationFrame` callback (120 frames, 300px diagonal). Measures frame times, calculates avg/P95/max/jank%. Includes Copy button for easy result sharing. Configurable widget count (4, 8, 12, 16, 24, 32).
+
+**Key finding:** V2 has O(n) per-widget overhead during resize. At 4 widgets both versions are identical (~7ms). At 32 widgets, V2 is 68% slower with 15–21% jank frames. V1 stays flat regardless of widget count. Full data table in Performance Notes section above.
+
+**Conclusion:** The v1.4.4 recommendation is confirmed with data. The issue is architectural (hooks-based rewrite overhead), not caused by app-level complexity (MUI/Jotai). MUI/Jotai would compound the problem further.
+
+**Files changed in wts-frontend:**
+- `HANDOFF.md` — Updated Performance Notes with benchmark data; added this session log
+
+**New project created:**
+- `../rgl-performance-test/` — Full benchmark monorepo, pushed to https://github.com/gloomydumber/rgl-performance-test
+
+**Action items for future sessions:**
+- Re-benchmark when RGL v2.3+ releases (update `packages/v2/package.json`, run at 4/16/32 widgets)
+- Consider filing an upstream issue on react-grid-layout with benchmark data
+- If v2 fixes the scaling issue, migrate wts-frontend back to v2 for built-in types and modern API

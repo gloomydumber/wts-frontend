@@ -1,7 +1,7 @@
-import type { LayoutItem, ResponsiveLayouts } from 'react-grid-layout'
+import type { Layout, Layouts } from 'react-grid-layout'
 
 // Extended layout item with permanent flag
-export interface WidgetLayoutItem extends LayoutItem {
+export interface WidgetLayoutItem extends Layout {
   permanent?: boolean
 }
 
@@ -14,4 +14,4 @@ export interface WidgetConfig {
 }
 
 // Re-export for convenience
-export type { LayoutItem, ResponsiveLayouts }
+export type { Layout, Layouts }

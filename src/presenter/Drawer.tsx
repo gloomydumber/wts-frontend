@@ -17,7 +17,7 @@ import CloseTwoToneIcon from '@mui/icons-material/CloseTwoTone'
 import LockTwoToneIcon from '@mui/icons-material/LockTwoTone'
 import WidgetsTwoToneIcon from '@mui/icons-material/WidgetsTwoTone'
 import { useAtom } from 'jotai'
-import type { LayoutItem, ResponsiveLayouts } from 'react-grid-layout'
+import type { Layout, Layouts } from 'react-grid-layout'
 
 import { widgetVisibilityAtom, layoutsAtom } from '../store/atoms'
 import { WIDGET_REGISTRY, defaultLayouts, getCurrentBreakpoint } from '../layout/defaults'
@@ -40,13 +40,13 @@ export default function WidgetDrawer() {
       // If toggling ON and widget is not in current layout, add default position
       if (!isCurrentlyVisible) {
         const bp = getCurrentBreakpoint(window.innerWidth)
-        const hasLayout = (layouts[bp] || []).some((l: LayoutItem) => l.i === widgetId)
+        const hasLayout = (layouts[bp] || []).some((l: Layout) => l.i === widgetId)
         if (!hasLayout) {
           const defaultLayout = (defaultLayouts[bp] || []).find(
-            (l: LayoutItem) => l.i === widgetId,
+            (l: Layout) => l.i === widgetId,
           )
           if (defaultLayout) {
-            setLayouts((prev: ResponsiveLayouts) => ({
+            setLayouts((prev: Layouts) => ({
               ...prev,
               [bp]: [...(prev[bp] || []), defaultLayout],
             }))
@@ -54,10 +54,10 @@ export default function WidgetDrawer() {
             // Place at bottom with default size
             const existing = layouts[bp] || []
             const maxY = existing.reduce(
-              (max: number, l: LayoutItem) => Math.max(max, l.y + l.h),
+              (max: number, l: Layout) => Math.max(max, l.y + l.h),
               0,
             )
-            setLayouts((prev: ResponsiveLayouts) => ({
+            setLayouts((prev: Layouts) => ({
               ...prev,
               [bp]: [...(prev[bp] || []), { i: widgetId, x: 0, y: maxY, w: 4, h: 6 }],
             }))

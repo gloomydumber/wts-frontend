@@ -1,13 +1,6 @@
-import { useCallback, useMemo } from 'react'
-import {
-  ResponsiveGridLayout,
-  useContainerWidth,
-  type Layout,
-  type LayoutItem,
-  type ResponsiveLayouts,
-} from 'react-grid-layout'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { WidthProvider, Responsive, type Layout, type Layouts } from 'react-grid-layout'
 import { useAtom, useSetAtom } from 'jotai'
-import { Box } from '@mui/material'
 import { debounce } from 'lodash'
 
 import { layoutsAtom, currentBreakpointAtom, widgetVisibilityAtom } from '../store/atoms'
@@ -24,20 +17,39 @@ import { widgetComponents } from '../components/widgets'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 
+const ResponsiveGridLayout = WidthProvider(Responsive)
+
+/** Memoized wrapper — prevents widget content from re-rendering during grid resize/drag */
+const WidgetContent = React.memo(function WidgetContent({ id }: { id: string }) {
+  const Component = widgetComponents[id]
+  return Component ? <Component /> : null
+})
+
 export default function GridLayout() {
   const [layouts, setLayouts] = useAtom(layoutsAtom)
   const setCurrentBreakpoint = useSetAtom(currentBreakpointAtom)
   const [visibility, setVisibility] = useAtom(widgetVisibilityAtom)
 
-  const { width, containerRef, mounted } = useContainerWidth()
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth)
 
-  const breakpoint = getCurrentBreakpoint(width)
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
-  // Debounced layout change handler
+  const breakpoint = getCurrentBreakpoint(windowWidth)
+
+  // Same debounce + JSON comparison pattern as rgl-practice
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const onLayoutChange = useCallback(
-    debounce((_layout: Layout, newLayouts: ResponsiveLayouts) => {
-      setLayouts(newLayouts)
+    debounce((_layout: Layout[], newLayouts: Layouts) => {
+      setLayouts((prev) => {
+        if (JSON.stringify(prev) !== JSON.stringify(newLayouts)) {
+          return newLayouts
+        }
+        return prev
+      })
     }, 10),
     [setLayouts],
   )
@@ -47,7 +59,6 @@ export default function GridLayout() {
     [setCurrentBreakpoint],
   )
 
-  // Remove widget: update visibility (Drawer syncs automatically)
   const removeItem = useCallback(
     (id: string) => {
       setVisibility((prev: Record<string, boolean>) => ({ ...prev, [id]: false }))
@@ -57,10 +68,10 @@ export default function GridLayout() {
 
   // Filter layouts to only visible widgets
   const visibleLayouts = useMemo(() => {
-    const result: ResponsiveLayouts = {}
+    const result: Layouts = {}
     for (const bp of Object.keys(layouts)) {
       result[bp] = (layouts[bp] || []).filter(
-        (item: LayoutItem) => visibility[item.i] !== false,
+        (item: Layout) => visibility[item.i] !== false,
       )
     }
     return result
@@ -69,44 +80,36 @@ export default function GridLayout() {
   const currentLayout = visibleLayouts[breakpoint] || []
 
   return (
-    <div ref={containerRef}>
-      {mounted && (
-        <ResponsiveGridLayout
-          className="layout grid-layout"
-          width={width}
-          layouts={visibleLayouts}
-          onLayoutChange={onLayoutChange}
-          onBreakpointChange={onBreakpointChange}
-          rowHeight={ROW_HEIGHT}
-          dragConfig={{ handle: '.drag-handle', enabled: true }}
-          resizeConfig={{
-            enabled: true,
-            handleComponent: <ResizeHandle />,
-          }}
-          breakpoints={BREAKPOINTS}
-          cols={COLS}
-        >
-          {currentLayout.map((item: LayoutItem) => {
-            const Component = widgetComponents[item.i]
-            const config = WIDGET_REGISTRY.find((w) => w.id === item.i)
+    <ResponsiveGridLayout
+      className="layout grid-layout"
+      layouts={visibleLayouts}
+      onLayoutChange={onLayoutChange}
+      onBreakpointChange={onBreakpointChange}
+      rowHeight={ROW_HEIGHT}
+      width={windowWidth}
+      draggableHandle=".drag-handle"
+      useCSSTransforms={false}
+      breakpoints={BREAKPOINTS}
+      cols={COLS}
+      resizeHandle={<ResizeHandle />}
+    >
+      {currentLayout.map((item: Layout) => {
+        const config = WIDGET_REGISTRY.find((w) => w.id === item.i)
 
-            return (
-              <Box key={item.i} className="grid-item">
-                {/* Close button — skip for permanent widgets */}
-                {!config?.permanent && (
-                  <Box className="close-button" onClick={() => removeItem(item.i)}>
-                    &times;
-                  </Box>
-                )}
-                <Box className="drag-handle">{config?.label ?? item.i}</Box>
-                <Box className="content">
-                  {Component ? <Component /> : null}
-                </Box>
-              </Box>
-            )
-          })}
-        </ResponsiveGridLayout>
-      )}
-    </div>
+        return (
+          <div key={item.i} className="grid-item">
+            {!config?.permanent && (
+              <div className="close-button" onClick={() => removeItem(item.i)}>
+                &times;
+              </div>
+            )}
+            <div className="drag-handle">{config?.label ?? item.i}</div>
+            <div className="content">
+              <WidgetContent id={item.i} />
+            </div>
+          </div>
+        )
+      })}
+    </ResponsiveGridLayout>
   )
 }

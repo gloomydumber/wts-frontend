@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, memo } from 'react'
 import { Box } from '@mui/material'
 
 interface OrderbookEntry {
@@ -37,7 +37,8 @@ function generateMockOrderbook() {
   return { asks: asks.reverse(), bids }
 }
 
-function RowLine({
+// Plain div row — no MUI, no Emotion for dynamic styles
+const RowLine = memo(function RowLine({
   entry,
   side,
   maxTotal,
@@ -51,44 +52,29 @@ function RowLine({
   const textColor = side === 'ask' ? '#ff0000' : '#0000ff'
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        fontSize: '0.7rem',
-        fontVariantNumeric: 'tabular-nums',
-        px: 0.5,
-        py: '1px',
-        position: 'relative',
-        '&::before': {
-          content: '""',
+    <div className="ob-row" style={{ position: 'relative' }}>
+      <div
+        style={{
           position: 'absolute',
           top: 0,
           bottom: 0,
           right: 0,
           width: `${pct}%`,
-          bgcolor: barColor,
-        },
-      }}
-    >
-      <Box sx={{ flex: 1, color: textColor, position: 'relative' }}>
-        {entry.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-      </Box>
-      <Box sx={{ flex: 1, textAlign: 'right', color: '#00ff00', position: 'relative' }}>
-        {entry.quantity.toFixed(4)}
-      </Box>
-      <Box
-        sx={{
-          flex: 1,
-          textAlign: 'right',
-          color: 'rgba(0,255,0,0.4)',
-          position: 'relative',
+          background: barColor,
         }}
-      >
+      />
+      <span className="ob-cell" style={{ color: textColor }}>
+        {entry.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+      </span>
+      <span className="ob-cell ob-right" style={{ color: '#00ff00' }}>
+        {entry.quantity.toFixed(4)}
+      </span>
+      <span className="ob-cell ob-right" style={{ color: 'rgba(0,255,0,0.4)' }}>
         {entry.total.toFixed(4)}
-      </Box>
-    </Box>
+      </span>
+    </div>
   )
-}
+})
 
 export default function OrderbookWidget() {
   const [data, setData] = useState(generateMockOrderbook)
@@ -111,51 +97,28 @@ export default function OrderbookWidget() {
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Header */}
-      <Box
-        sx={{
-          display: 'flex',
-          fontSize: '0.65rem',
-          textTransform: 'uppercase',
-          color: 'rgba(0,255,0,0.4)',
-          fontWeight: 700,
-          letterSpacing: '0.05em',
-          px: 0.5,
-          py: '2px',
-          bgcolor: '#0d0d0d',
-        }}
-      >
-        <Box sx={{ flex: 1 }}>Price (USDT)</Box>
-        <Box sx={{ flex: 1, textAlign: 'right' }}>Qty (BTC)</Box>
-        <Box sx={{ flex: 1, textAlign: 'right' }}>Total</Box>
-      </Box>
+      <div className="ob-header">
+        <span className="ob-cell">Price (USDT)</span>
+        <span className="ob-cell ob-right">Qty (BTC)</span>
+        <span className="ob-cell ob-right">Total</span>
+      </div>
 
       {/* Asks */}
-      <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
         {data.asks.map((entry, i) => (
           <RowLine key={`a${i}`} entry={entry} side="ask" maxTotal={maxTotal} />
         ))}
-      </Box>
+      </div>
 
       {/* Spread */}
-      <Box
-        sx={{
-          textAlign: 'center',
-          fontSize: '0.65rem',
-          color: 'rgba(0,255,0,0.4)',
-          py: '2px',
-          borderTop: '1px solid rgba(0,255,0,0.06)',
-          borderBottom: '1px solid rgba(0,255,0,0.06)',
-        }}
-      >
-        Spread: {spread}
-      </Box>
+      <div className="ob-spread">Spread: {spread}</div>
 
       {/* Bids */}
-      <Box sx={{ flex: 1, overflow: 'hidden' }}>
+      <div style={{ flex: 1, overflow: 'hidden' }}>
         {data.bids.map((entry, i) => (
           <RowLine key={`b${i}`} entry={entry} side="bid" maxTotal={maxTotal} />
         ))}
-      </Box>
+      </div>
     </Box>
   )
 }

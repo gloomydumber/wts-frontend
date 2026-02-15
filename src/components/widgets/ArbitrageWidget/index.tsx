@@ -1,13 +1,5 @@
-import { useState, useEffect } from 'react'
-import {
-  Box,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-} from '@mui/material'
+import { useState, useEffect, useMemo, memo } from 'react'
+import { Box } from '@mui/material'
 
 interface ArbitrageRow {
   ticker: string
@@ -49,6 +41,28 @@ function generateMockData(): ArbitrageRow[] {
   })
 }
 
+// Plain HTML table row — avoids Emotion style injection for dynamic bgcolor
+const ArbRow = memo(function ArbRow({ row }: { row: ArbitrageRow }) {
+  return (
+    <tr className="arb-row">
+      <td className="arb-cell arb-ticker">{row.ticker}</td>
+      <td className="arb-cell arb-right">{row.priceA.toLocaleString('ko-KR')}</td>
+      <td className="arb-cell arb-right">
+        {row.priceB.toLocaleString('en-US', { maximumFractionDigits: 4 })}
+      </td>
+      <td
+        className="arb-cell arb-right arb-premium"
+        style={{
+          background: calcPremiumColor(row.premium),
+          color: row.premium >= 0 ? '#ff0000' : '#0000ff',
+        }}
+      >
+        {formatPremium(row.premium)}
+      </td>
+    </tr>
+  )
+})
+
 export default function ArbitrageWidget() {
   const [rows, setRows] = useState<ArbitrageRow[]>(generateMockData)
 
@@ -57,61 +71,37 @@ export default function ArbitrageWidget() {
     return () => clearInterval(interval)
   }, [])
 
-  const sorted = [...rows].sort((a, b) => Math.abs(b.premium) - Math.abs(a.premium))
+  const sorted = useMemo(
+    () => [...rows].sort((a, b) => Math.abs(b.premium) - Math.abs(a.premium)),
+    [rows],
+  )
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Header labels */}
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          px: 1,
-          py: '2px',
-          fontSize: '0.6rem',
-          color: 'rgba(0,255,0,0.4)',
-        }}
-      >
+      <div className="arb-exchange-labels">
         <span>Upbit (KRW)</span>
         <span>vs</span>
         <span>Binance (USDT)</span>
-      </Box>
+      </div>
 
-      <TableContainer sx={{ flex: 1 }}>
-        <Table size="small" stickyHeader sx={{ tableLayout: 'fixed' }}>
-          <TableHead>
-            <TableRow>
-              <TableCell width="20%">Ticker</TableCell>
-              <TableCell align="right" width="28%">Upbit</TableCell>
-              <TableCell align="right" width="28%">Binance</TableCell>
-              <TableCell align="right" width="24%">Premium</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <table className="arb-table">
+          <thead>
+            <tr>
+              <th className="arb-th">Ticker</th>
+              <th className="arb-th arb-right">Upbit</th>
+              <th className="arb-th arb-right">Binance</th>
+              <th className="arb-th arb-right">Premium</th>
+            </tr>
+          </thead>
+          <tbody>
             {sorted.map((row) => (
-              <TableRow key={row.ticker} hover>
-                <TableCell sx={{ fontWeight: 700 }}>{row.ticker}</TableCell>
-                <TableCell align="right">
-                  {row.priceA.toLocaleString('ko-KR')}
-                </TableCell>
-                <TableCell align="right">
-                  {row.priceB.toLocaleString('en-US', { maximumFractionDigits: 4 })}
-                </TableCell>
-                <TableCell
-                  align="right"
-                  sx={{
-                    bgcolor: calcPremiumColor(row.premium),
-                    color: row.premium >= 0 ? '#ff0000' : '#0000ff',
-                    fontWeight: 700,
-                  }}
-                >
-                  {formatPremium(row.premium)}
-                </TableCell>
-              </TableRow>
+              <ArbRow key={row.ticker} row={row} />
             ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+          </tbody>
+        </table>
+      </div>
     </Box>
   )
 }

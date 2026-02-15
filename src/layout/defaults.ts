@@ -1,20 +1,15 @@
-import type { WidgetConfig, WidgetLayoutItem, ResponsiveLayouts } from '../types/layout'
+import type { WidgetConfig, WidgetLayoutItem, Layouts } from '../types/layout'
 
 // Widget registry — single source of truth for all widget metadata
 export const WIDGET_REGISTRY: WidgetConfig[] = [
   { id: 'Console', label: 'Console', permanent: true, defaultVisible: true },
-  { id: 'Order', label: 'Order', defaultVisible: true },
-  { id: 'Balance', label: 'Balance', defaultVisible: true },
+  { id: 'Exchange', label: 'Exchange', defaultVisible: true },
   { id: 'Orderbook', label: 'Orderbook', defaultVisible: true },
   { id: 'Arbitrage', label: 'Arbitrage', defaultVisible: true },
-  { id: 'Chart', label: 'Chart', defaultVisible: true },
+  { id: 'Chart', label: 'Chart', defaultVisible: false },
   { id: 'ExchangeCalc', label: 'Exchange Calculator', defaultVisible: false },
-  { id: 'Transfer', label: 'Transfer', defaultVisible: false },
-  { id: 'Deposit', label: 'Deposit', defaultVisible: false },
-  { id: 'Withdraw', label: 'Withdraw', defaultVisible: false },
   { id: 'Wallet', label: 'Wallet', defaultVisible: false },
   { id: 'Swap', label: 'Swap', defaultVisible: false },
-  { id: 'Margin', label: 'Margin', defaultVisible: false },
   { id: 'Memo', label: 'Memo', defaultVisible: false },
   { id: 'Shortcut', label: 'Shortcut', defaultVisible: false },
 ]
@@ -40,50 +35,40 @@ export function getCurrentBreakpoint(width: number): string {
 // Default layouts per breakpoint
 const lgLayout: WidgetLayoutItem[] = [
   { i: 'Console', x: 0, y: 0, w: 4, h: 6, permanent: true },
-  { i: 'Order', x: 4, y: 0, w: 4, h: 8 },
-  { i: 'Balance', x: 8, y: 0, w: 4, h: 6 },
-  { i: 'Orderbook', x: 0, y: 6, w: 4, h: 8 },
-  { i: 'Arbitrage', x: 4, y: 8, w: 4, h: 9, minW: 3 },
-  { i: 'Chart', x: 8, y: 6, w: 4, h: 8 },
+  { i: 'Exchange', x: 0, y: 6, w: 8, h: 12 },
+  { i: 'Orderbook', x: 4, y: 0, w: 4, h: 6 },
+  { i: 'Arbitrage', x: 8, y: 0, w: 4, h: 9, minW: 3 },
 ]
 
 const mdLayout: WidgetLayoutItem[] = [
   { i: 'Console', x: 0, y: 0, w: 5, h: 6, permanent: true },
-  { i: 'Order', x: 5, y: 0, w: 5, h: 8 },
-  { i: 'Balance', x: 0, y: 6, w: 5, h: 6 },
-  { i: 'Orderbook', x: 5, y: 8, w: 5, h: 8 },
-  { i: 'Arbitrage', x: 0, y: 12, w: 5, h: 9, minW: 3 },
-  { i: 'Chart', x: 5, y: 16, w: 5, h: 8 },
+  { i: 'Exchange', x: 0, y: 6, w: 10, h: 12 },
+  { i: 'Orderbook', x: 5, y: 0, w: 5, h: 6 },
+  { i: 'Arbitrage', x: 0, y: 18, w: 5, h: 9, minW: 3 },
 ]
 
 const smLayout: WidgetLayoutItem[] = [
   { i: 'Console', x: 0, y: 0, w: 6, h: 5, permanent: true },
-  { i: 'Order', x: 0, y: 5, w: 6, h: 8 },
-  { i: 'Balance', x: 0, y: 13, w: 6, h: 6 },
+  { i: 'Exchange', x: 0, y: 5, w: 6, h: 14 },
   { i: 'Orderbook', x: 0, y: 19, w: 6, h: 8 },
   { i: 'Arbitrage', x: 0, y: 27, w: 6, h: 9 },
-  { i: 'Chart', x: 0, y: 36, w: 6, h: 8 },
 ]
 
 const xsLayout: WidgetLayoutItem[] = [
   { i: 'Console', x: 0, y: 0, w: 4, h: 5, permanent: true, isResizable: false, isDraggable: false },
-  { i: 'Order', x: 0, y: 5, w: 4, h: 8, isResizable: false, isDraggable: false },
-  { i: 'Balance', x: 0, y: 13, w: 4, h: 6, isResizable: false, isDraggable: false },
+  { i: 'Exchange', x: 0, y: 5, w: 4, h: 14, isResizable: false, isDraggable: false },
   { i: 'Orderbook', x: 0, y: 19, w: 4, h: 8, isResizable: false, isDraggable: false },
   { i: 'Arbitrage', x: 0, y: 27, w: 4, h: 9, isResizable: false, isDraggable: false },
-  { i: 'Chart', x: 0, y: 36, w: 4, h: 8, isResizable: false, isDraggable: false },
 ]
 
 const xxsLayout: WidgetLayoutItem[] = [
   { i: 'Console', x: 0, y: 0, w: 2, h: 5, permanent: true, isResizable: false, isDraggable: false },
-  { i: 'Order', x: 0, y: 5, w: 2, h: 8, isResizable: false, isDraggable: false },
-  { i: 'Balance', x: 0, y: 13, w: 2, h: 6, isResizable: false, isDraggable: false },
+  { i: 'Exchange', x: 0, y: 5, w: 2, h: 14, isResizable: false, isDraggable: false },
   { i: 'Orderbook', x: 0, y: 19, w: 2, h: 8, isResizable: false, isDraggable: false },
   { i: 'Arbitrage', x: 0, y: 27, w: 2, h: 9, isResizable: false, isDraggable: false },
-  { i: 'Chart', x: 0, y: 36, w: 2, h: 8, isResizable: false, isDraggable: false },
 ]
 
-export const defaultLayouts: ResponsiveLayouts = {
+export const defaultLayouts: Layouts = {
   lg: lgLayout,
   md: mdLayout,
   sm: smLayout,
