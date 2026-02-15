@@ -19,7 +19,7 @@ export default function GlobalStyles() {
           width: '100%',
         },
         '.grid-item': {
-          border: `1px solid ${theme.palette.divider}`,
+          border: '1px solid #999',
           display: 'flex',
           flexDirection: 'column',
           position: 'relative',
@@ -47,7 +47,7 @@ export default function GlobalStyles() {
           cursor: 'move',
           padding: '5px',
           fontWeight: 'bold',
-          fontSize: 'medium',
+          fontSize: '0.75rem',
           borderBottom: `1px solid ${theme.palette.primary.main}`,
         },
         '.content': {

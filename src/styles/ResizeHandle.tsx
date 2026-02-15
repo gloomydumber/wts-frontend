@@ -1,21 +1,14 @@
 import React from 'react'
 import { useTheme } from '@mui/material/styles'
 
-// SE-resize handle SVGs (20x20px)
-const DARK_HANDLE = `url('data:image/svg+xml;base64,${btoa(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><line x1="14" y1="20" x2="20" y2="14" stroke="lime" stroke-width="1"/><line x1="8" y1="20" x2="20" y2="8" stroke="lime" stroke-width="1"/><line x1="2" y1="20" x2="20" y2="2" stroke="lime" stroke-width="1"/></svg>'
-)}')`
-
-const LIGHT_HANDLE = `url('data:image/svg+xml;base64,${btoa(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><line x1="14" y1="20" x2="20" y2="14" stroke="rgba(0,0,0,0.3)" stroke-width="1"/><line x1="8" y1="20" x2="20" y2="8" stroke="rgba(0,0,0,0.3)" stroke-width="1"/><line x1="2" y1="20" x2="20" y2="2" stroke="rgba(0,0,0,0.3)" stroke-width="1"/></svg>'
-)}')`
-
 const ResizeHandle = React.forwardRef<
   HTMLSpanElement,
   { handleAxis?: string }
 >((props, ref) => {
   const { handleAxis, ...restProps } = props
   const theme = useTheme()
+  const darkHandle = `url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIxIj48cGF0aCBkPSJNIDYgNiBMIDAgNiBMIDAgNC4yIEwgNCA0LjIgTCA0LjIgNC4yIEwgNC4yIDAgTCA2IDAgTCA2IDYgTCA2IDYgWiIgZmlsbD0iIzAwRkYwMCIvPjwvZz48L3N2Zz4=')`
+  const lightHandle = `url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSA2IDYgTCAwIDYgTCAwIDQuMiBMIDQgNC4yIEwgNC4yIDQuMiBMIDQuMiAwIEwgNiAwIEwgNiA2IEwgNiA2IFoiIGZpbGw9IiMwMDAwMDAiLz48L2c+PC9zdmc+')`
 
   return (
     <span
@@ -27,12 +20,12 @@ const ResizeHandle = React.forwardRef<
         width: '20px',
         height: '20px',
         cursor: 'se-resize',
-        bottom: 0,
-        right: 0,
+        bottom: '0',
+        right: '0',
         backgroundRepeat: 'no-repeat',
         backgroundOrigin: 'content-box',
         boxSizing: 'border-box',
-        backgroundImage: theme.palette.mode === 'dark' ? DARK_HANDLE : LIGHT_HANDLE,
+        backgroundImage: theme.palette.mode === 'dark' ? darkHandle : lightHandle,
         backgroundPosition: 'bottom right',
         padding: '0 3px 3px 0',
       }}

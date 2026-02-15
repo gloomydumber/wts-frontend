@@ -6,7 +6,7 @@ import {
   type LayoutItem,
   type ResponsiveLayouts,
 } from 'react-grid-layout'
-import { useAtom, useAtomValue, useSetAtom } from 'jotai'
+import { useAtom, useSetAtom } from 'jotai'
 import { Box } from '@mui/material'
 import { debounce } from 'lodash'
 
@@ -27,7 +27,7 @@ import 'react-resizable/css/styles.css'
 export default function GridLayout() {
   const [layouts, setLayouts] = useAtom(layoutsAtom)
   const setCurrentBreakpoint = useSetAtom(currentBreakpointAtom)
-  const visibility = useAtomValue(widgetVisibilityAtom)
+  const [visibility, setVisibility] = useAtom(widgetVisibilityAtom)
 
   const { width, containerRef, mounted } = useContainerWidth()
 
@@ -47,15 +47,12 @@ export default function GridLayout() {
     [setCurrentBreakpoint],
   )
 
-  // Remove widget from current layout
+  // Remove widget: update visibility (Drawer syncs automatically)
   const removeItem = useCallback(
     (id: string) => {
-      setLayouts((prev: ResponsiveLayouts) => ({
-        ...prev,
-        [breakpoint]: (prev[breakpoint] || []).filter((l: LayoutItem) => l.i !== id),
-      }))
+      setVisibility((prev: Record<string, boolean>) => ({ ...prev, [id]: false }))
     },
-    [breakpoint, setLayouts],
+    [setVisibility],
   )
 
   // Filter layouts to only visible widgets
