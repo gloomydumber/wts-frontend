@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useCallback, useRef } from 'react'
 import {
   Box,
   TextField,
@@ -11,18 +11,38 @@ import {
 } from '@mui/material'
 import type { ExchangeConfig } from '../types'
 
+export interface OrderState {
+  side: 'buy' | 'sell'
+  orderType: 'limit' | 'market'
+  price: string
+  quantity: string
+  sellOnly: boolean
+  loopActive: boolean
+}
+
+export const DEFAULT_ORDER_STATE: OrderState = {
+  side: 'buy',
+  orderType: 'limit',
+  price: '97250.00',
+  quantity: '0.01',
+  sellOnly: false,
+  loopActive: false,
+}
+
 /** Strip non-numeric chars (except dot) — allows pasting "100,000.50" */
 function sanitizeNumber(raw: string): string {
   return raw.replace(/[^0-9.]/g, '')
 }
 
-export default function OrderTab({ exchange, pair }: { exchange: ExchangeConfig; pair: string }) {
-  const [side, setSide] = useState<'buy' | 'sell'>('buy')
-  const [orderType, setOrderType] = useState<'limit' | 'market'>('limit')
-  const [price, setPrice] = useState('97250.00')
-  const [quantity, setQuantity] = useState('0.01')
-  const [sellOnly, setSellOnly] = useState(false)
-  const [loopActive, setLoopActive] = useState(false)
+interface OrderTabProps {
+  exchange: ExchangeConfig
+  pair: string
+  state: OrderState
+  onChange: (update: Partial<OrderState>) => void
+}
+
+export default function OrderTab({ exchange, pair, state, onChange }: OrderTabProps) {
+  const { side, orderType, price, quantity, sellOnly, loopActive } = state
   const sellOnlyRef = useRef(false)
 
   // Suppress unused var lint — exchange will be used for real API calls in Phase 2
@@ -42,39 +62,39 @@ export default function OrderTab({ exchange, pair }: { exchange: ExchangeConfig;
   const sellBorder = 'rgba(0,0,255,0.3)'
 
   const handlePriceChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setPrice(sanitizeNumber(e.target.value))
-  }, [])
+    onChange({ price: sanitizeNumber(e.target.value) })
+  }, [onChange])
 
   const handleQuantityChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setQuantity(sanitizeNumber(e.target.value))
-  }, [])
+    onChange({ quantity: sanitizeNumber(e.target.value) })
+  }, [onChange])
 
   const handlePricePaste = useCallback((e: React.ClipboardEvent) => {
     e.preventDefault()
     const pasted = e.clipboardData.getData('text')
-    setPrice(sanitizeNumber(pasted))
-  }, [])
+    onChange({ price: sanitizeNumber(pasted) })
+  }, [onChange])
 
   const handleQuantityPaste = useCallback((e: React.ClipboardEvent) => {
     e.preventDefault()
     const pasted = e.clipboardData.getData('text')
-    setQuantity(sanitizeNumber(pasted))
-  }, [])
+    onChange({ quantity: sanitizeNumber(pasted) })
+  }, [onChange])
 
   const handleSellOnlyToggle = useCallback((_: unknown, checked: boolean) => {
-    setSellOnly(checked)
+    onChange({ sellOnly: checked })
     sellOnlyRef.current = checked
-  }, [])
+  }, [onChange])
 
   const handleSideChange = useCallback((_: unknown, v: 'buy' | 'sell' | null) => {
     if (!v) return
-    setSide(v)
     if (v === 'buy') {
-      setSellOnly(false)
-      setLoopActive(false)
+      onChange({ side: v, sellOnly: false, loopActive: false })
       sellOnlyRef.current = false
+    } else {
+      onChange({ side: v })
     }
-  }, [])
+  }, [onChange])
 
   const inputSx = {
     mt: 1.5,
@@ -105,7 +125,7 @@ export default function OrderTab({ exchange, pair }: { exchange: ExchangeConfig;
         </ToggleButton>
       </ToggleButtonGroup>
 
-      <ToggleButtonGroup value={orderType} exclusive onChange={(_, v) => v && setOrderType(v)} fullWidth size="small" sx={{ mt: 0.5 }}>
+      <ToggleButtonGroup value={orderType} exclusive onChange={(_, v) => v && onChange({ orderType: v })} fullWidth size="small" sx={{ mt: 0.5 }}>
         <ToggleButton value="limit" sx={{ fontSize: '0.65rem', py: 0.2 }}>Limit</ToggleButton>
         <ToggleButton value="market" sx={{ fontSize: '0.65rem', py: 0.2 }}>Market</ToggleButton>
       </ToggleButtonGroup>
@@ -153,11 +173,6 @@ export default function OrderTab({ exchange, pair }: { exchange: ExchangeConfig;
             label={<Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.7)' }}>Sell-Only (polling)</Typography>}
             sx={{ m: 0 }}
           />
-          {sellOnly && !loopActive && (
-            <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', lineHeight: 1.2, mt: 0.3 }}>
-              Will poll until sell succeeds (arbitrage mode)
-            </Typography>
-          )}
         </Box>
       )}
 
@@ -166,7 +181,7 @@ export default function OrderTab({ exchange, pair }: { exchange: ExchangeConfig;
           variant="outlined"
           fullWidth
           onClick={() => {
-            setLoopActive(false)
+            onChange({ loopActive: false })
             sellOnlyRef.current = false
           }}
           sx={{
@@ -184,7 +199,7 @@ export default function OrderTab({ exchange, pair }: { exchange: ExchangeConfig;
           fullWidth
           onClick={() => {
             if (side === 'sell' && sellOnly) {
-              setLoopActive(true)
+              onChange({ loopActive: true })
               sellOnlyRef.current = true
               // Phase 2: start polling loop here
             }

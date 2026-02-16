@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Box,
   Table,
@@ -66,6 +67,7 @@ function formatCryptoAmount(value: number): string {
 }
 
 export default function BalanceTab({ exchange }: { exchange: ExchangeConfig }) {
+  const [copiedAsset, setCopiedAsset] = useState<string | null>(null)
   const balances = mockBalances[exchange.id] || []
   const total = balances.reduce((s, b) => s + b.usdValue, 0)
 
@@ -94,7 +96,22 @@ export default function BalanceTab({ exchange }: { exchange: ExchangeConfig }) {
               <TableRow key={row.asset} hover>
                 <TableCell sx={{ fontWeight: 700 }}>{row.asset}</TableCell>
                 <TableCell align="right">
-                  {formatCryptoAmount(row.free)}
+                  <Box
+                    component="span"
+                    onClick={() => {
+                      navigator.clipboard.writeText(formatCryptoAmount(row.free))
+                      setCopiedAsset(row.asset)
+                      setTimeout(() => setCopiedAsset(null), 1000)
+                    }}
+                    sx={{
+                      cursor: 'pointer',
+                      color: copiedAsset === row.asset ? '#00ff00' : 'inherit',
+                      '&:hover': { color: '#00ff00' },
+                      transition: 'color 0.15s',
+                    }}
+                  >
+                    {formatCryptoAmount(row.free)}
+                  </Box>
                 </TableCell>
                 <TableCell align="right" sx={{ color: row.locked > 0 ? '#ffff00' : 'inherit' }}>
                   {row.locked > 0 ? formatCryptoAmount(row.locked) : '—'}

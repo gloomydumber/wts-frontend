@@ -3,7 +3,7 @@ import type { WidgetConfig, WidgetLayoutItem, Layouts } from '../types/layout'
 // Widget registry — single source of truth for all widget metadata
 export const WIDGET_REGISTRY: WidgetConfig[] = [
   { id: 'Console', label: 'Console', permanent: true, defaultVisible: true },
-  { id: 'Exchange', label: 'Exchange', defaultVisible: true },
+  { id: 'Exchange', label: 'CEX', defaultVisible: true },
   { id: 'Orderbook', label: 'Orderbook', defaultVisible: true },
   { id: 'Arbitrage', label: 'Arbitrage', defaultVisible: true },
   { id: 'Chart', label: 'Chart', defaultVisible: false },

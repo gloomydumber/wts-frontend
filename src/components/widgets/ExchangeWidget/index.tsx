@@ -1,13 +1,13 @@
-import { useState } from 'react'
-import { Box, Tabs, Tab, Divider, Select, MenuItem, Typography } from '@mui/material'
+import { useState, useCallback } from 'react'
+import { Box, Tabs, Tab, Divider, Autocomplete, TextField, Typography } from '@mui/material'
 import { EXCHANGE_COLORS } from '../../../types/exchange'
 import { EXCHANGES, getAvailableTabs, type OperationTab } from './types'
 import BalanceTab from './tabs/BalanceTab'
-import OrderTab from './tabs/OrderTab'
-import DepositTab from './tabs/DepositTab'
-import WithdrawTab from './tabs/WithdrawTab'
-import TransferTab from './tabs/TransferTab'
-import MarginTab from './tabs/MarginTab'
+import OrderTab, { DEFAULT_ORDER_STATE, type OrderState } from './tabs/OrderTab'
+import DepositTab, { DEFAULT_DEPOSIT_STATE, type DepositState } from './tabs/DepositTab'
+import WithdrawTab, { DEFAULT_WITHDRAW_STATE, type WithdrawState } from './tabs/WithdrawTab'
+import TransferTab, { DEFAULT_TRANSFER_STATE, type TransferState } from './tabs/TransferTab'
+import MarginTab, { DEFAULT_MARGIN_STATE, type MarginState } from './tabs/MarginTab'
 
 const OP_LABELS: Record<OperationTab, string> = {
   deposit: 'Deposit',
@@ -27,29 +27,72 @@ const pairsByExchange: Record<string, string[]> = {
 
 export default function ExchangeWidget() {
   const [exchangeIdx, setExchangeIdx] = useState(0)
-  const [opTab, setOpTab] = useState<OperationTab>('deposit')
-  const [pair, setPair] = useState('BTC/KRW')
+  const [opTabs, setOpTabs] = useState<Record<string, OperationTab>>({})
+  const [pairs, setPairs] = useState<Record<string, string>>({})
+  const [orderStates, setOrderStates] = useState<Record<string, OrderState>>({})
+  const [depositStates, setDepositStates] = useState<Record<string, DepositState>>({})
+  const [withdrawStates, setWithdrawStates] = useState<Record<string, WithdrawState>>({})
+  const [transferStates, setTransferStates] = useState<Record<string, TransferState>>({})
+  const [marginStates, setMarginStates] = useState<Record<string, MarginState>>({})
 
   const exchange = EXCHANGES[exchangeIdx]
   const availableTabs = getAvailableTabs(exchange)
-  const pairs = pairsByExchange[exchange.id] || ['BTC/USDT']
+  const exchangePairs = pairsByExchange[exchange.id] || ['BTC/USDT']
+
+  const opTab = opTabs[exchange.id] ?? availableTabs[0] ?? 'deposit'
+  const pair = pairs[exchange.id] ?? exchangePairs[0]
+  const orderState = orderStates[exchange.id] ?? DEFAULT_ORDER_STATE
+  const depositState = depositStates[exchange.id] ?? DEFAULT_DEPOSIT_STATE
+  const withdrawState = withdrawStates[exchange.id] ?? DEFAULT_WITHDRAW_STATE
+  const transferState = transferStates[exchange.id] ?? DEFAULT_TRANSFER_STATE
+  const marginState = marginStates[exchange.id] ?? DEFAULT_MARGIN_STATE
+
+  const handleOrderChange = useCallback((update: Partial<OrderState>) => {
+    setOrderStates((prev) => {
+      const current = prev[exchange.id] ?? DEFAULT_ORDER_STATE
+      return { ...prev, [exchange.id]: { ...current, ...update } }
+    })
+  }, [exchange.id])
+
+  const handleDepositChange = useCallback((update: Partial<DepositState>) => {
+    setDepositStates((prev) => {
+      const current = prev[exchange.id] ?? DEFAULT_DEPOSIT_STATE
+      return { ...prev, [exchange.id]: { ...current, ...update } }
+    })
+  }, [exchange.id])
+
+  const handleWithdrawChange = useCallback((update: Partial<WithdrawState>) => {
+    setWithdrawStates((prev) => {
+      const current = prev[exchange.id] ?? DEFAULT_WITHDRAW_STATE
+      return { ...prev, [exchange.id]: { ...current, ...update } }
+    })
+  }, [exchange.id])
+
+  const handleTransferChange = useCallback((update: Partial<TransferState>) => {
+    setTransferStates((prev) => {
+      const current = prev[exchange.id] ?? DEFAULT_TRANSFER_STATE
+      return { ...prev, [exchange.id]: { ...current, ...update } }
+    })
+  }, [exchange.id])
+
+  const handleMarginChange = useCallback((update: Partial<MarginState>) => {
+    setMarginStates((prev) => {
+      const current = prev[exchange.id] ?? DEFAULT_MARGIN_STATE
+      return { ...prev, [exchange.id]: { ...current, ...update } }
+    })
+  }, [exchange.id])
 
   const handleExchangeChange = (_: unknown, idx: number) => {
     setExchangeIdx(idx)
-    const newExchange = EXCHANGES[idx]
-    const newTabs = getAvailableTabs(newExchange)
-    if (!newTabs.includes(opTab)) {
-      setOpTab(newTabs[0])
-    }
-    const newPairs = pairsByExchange[newExchange.id] || ['BTC/USDT']
-    if (!newPairs.includes(pair)) {
-      setPair(newPairs[0])
-    }
   }
 
   const handleOpChange = (_: unknown, val: OperationTab) => {
-    if (val) setOpTab(val)
+    if (val) setOpTabs((prev) => ({ ...prev, [exchange.id]: val }))
   }
+
+  const handlePairChange = useCallback((v: string) => {
+    setPairs((prev) => ({ ...prev, [exchange.id]: v }))
+  }, [exchange.id])
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -94,21 +137,28 @@ export default function ExchangeWidget() {
             <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', textTransform: 'uppercase', mb: 0.5 }}>
               Asset
             </Typography>
-            <Select
-              value={pairs.includes(pair) ? pair : pairs[0]}
-              onChange={(e) => setPair(e.target.value)}
+            <Autocomplete
+              value={exchangePairs.includes(pair) ? pair : exchangePairs[0]}
+              onChange={(_, v) => { if (v) handlePairChange(v) }}
+              onInputChange={(_, v, reason) => { if (reason === 'input') handlePairChange(v) }}
+              options={exchangePairs}
+              freeSolo
               size="small"
               fullWidth
-              sx={{ fontSize: '0.75rem', fontWeight: 700 }}
-            >
-              {pairs.map((p) => (
-                <MenuItem key={p} value={p} sx={{ fontSize: '0.7rem' }}>{p}</MenuItem>
-              ))}
-            </Select>
+              disableClearable
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  variant="outlined"
+                  slotProps={{ htmlInput: { ...params.inputProps, style: { fontSize: '0.75rem', fontWeight: 700 } } }}
+                />
+              )}
+              slotProps={{ listbox: { sx: { fontSize: '0.7rem' } } }}
+            />
           </Box>
           {/* Order form */}
           <Box sx={{ flex: 1, p: 1, display: 'flex', flexDirection: 'column' }}>
-            <OrderTab exchange={exchange} pair={pair} />
+            <OrderTab exchange={exchange} pair={pair} state={orderState} onChange={handleOrderChange} />
           </Box>
         </Box>
 
@@ -139,10 +189,10 @@ export default function ExchangeWidget() {
           </Tabs>
 
           <Box sx={{ flex: 1, overflow: 'auto', p: 1, display: 'flex', flexDirection: 'column' }}>
-            {opTab === 'deposit' && <DepositTab exchange={exchange} />}
-            {opTab === 'withdraw' && <WithdrawTab exchange={exchange} />}
-            {opTab === 'transfer' && <TransferTab exchange={exchange} />}
-            {opTab === 'margin' && <MarginTab exchange={exchange} />}
+            {opTab === 'deposit' && <DepositTab exchange={exchange} state={depositState} onChange={handleDepositChange} />}
+            {opTab === 'withdraw' && <WithdrawTab exchange={exchange} state={withdrawState} onChange={handleWithdrawChange} />}
+            {opTab === 'transfer' && <TransferTab exchange={exchange} state={transferState} onChange={handleTransferChange} />}
+            {opTab === 'margin' && <MarginTab exchange={exchange} state={marginState} onChange={handleMarginChange} />}
           </Box>
         </Box>
       </Box>

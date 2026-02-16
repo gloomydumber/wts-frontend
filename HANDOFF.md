@@ -1439,3 +1439,66 @@ Both apps have identical widget content (plain colored divs), same grid config (
 - Re-benchmark when RGL v2.3+ releases (update `packages/v2/package.json`, run at 4/16/32 widgets)
 - Consider filing an upstream issue on react-grid-layout with benchmark data
 - If v2 fixes the scaling issue, migrate wts-frontend back to v2 for built-in types and modern API
+
+### 2026-02-15: ExchangeWidget UX Improvements
+
+**Goal:** Improve ExchangeWidget usability with 7 targeted UX changes.
+
+**Changes made:**
+
+1. **Renamed widget label "Exchange" → "CEX"** (`src/layout/defaults.ts`) — display label only, internal `id` stays `'Exchange'` for layout persistence compatibility.
+
+2. **Balance tab: click-to-copy FREE values** (`tabs/BalanceTab.tsx`) — clicking any FREE column value copies the formatted amount to clipboard with 1s lime color flash feedback.
+
+3. **Order tab: per-exchange independent state** (`index.tsx`) — added `key={exchange.id}` on `<OrderTab>`, forcing React to remount per exchange so local state (side, orderType, price, quantity) doesn't carry over.
+
+4. **Asset/pair selector: Select → Autocomplete** (`index.tsx`) — replaced MUI `<Select>` with `<Autocomplete freeSolo>`, allowing users to type custom pairs (e.g., "PEPE/USDT") not in the predefined list.
+
+5. **Removed "arbitrage mode" text** (`tabs/OrderTab.tsx`) — deleted the "Will poll until sell succeeds (arbitrage mode)" Typography block that appeared under Sell-Only checkbox.
+
+6. **Deposit tab: lime copy feedback** (`tabs/DepositTab.tsx`) — copy icon turns `#00ff00` for 1.5s after clicking, with "Copied!" text appearing next to it.
+
+7. **Transfer & Margin: larger Amount inputs** (`tabs/TransferTab.tsx`, `tabs/MarginTab.tsx`) — increased `fontSize` from `0.75rem` to `0.85rem` and `py` from `4px` to `8px`, matching OrderTab input sizing.
+
+**Files changed:**
+- `src/layout/defaults.ts`
+- `src/components/widgets/ExchangeWidget/index.tsx`
+- `src/components/widgets/ExchangeWidget/tabs/BalanceTab.tsx`
+- `src/components/widgets/ExchangeWidget/tabs/OrderTab.tsx`
+- `src/components/widgets/ExchangeWidget/tabs/DepositTab.tsx`
+- `src/components/widgets/ExchangeWidget/tabs/TransferTab.tsx`
+- `src/components/widgets/ExchangeWidget/tabs/MarginTab.tsx`
+
+**Build & lint:** Both pass cleanly.
+
+### 2026-02-16: Per-exchange state persistence + Withdraw "To" destination
+
+**Goal:** Make all ExchangeWidget panel state independent per exchange, and add one-click withdraw destination auto-fill.
+
+**Changes made:**
+
+1. **Per-exchange state for all panels** — Lifted local state from OrderTab, DepositTab, WithdrawTab, TransferTab, and MarginTab into `index.tsx` as `Record<exchangeId, State>` maps. Each exchange independently preserves: order side/type/price/qty, deposit asset/network, withdraw fields, transfer from/to/asset/amount, margin action/pair/amount. Also made `opTab` (deposit/withdraw/transfer/margin) and `pair` per-exchange — switching to an untouched exchange shows its default tab (deposit).
+
+2. **Withdraw "To" destination dropdown** — Added a "To" exchange selector on the Withdraw tab. Selecting a destination exchange auto-fills the address and memo from that exchange's deposit address data. Features:
+   - Default: "Custom" (manual entry, empty fields)
+   - Current exchange is excluded from the list
+   - Exchanges without a deposit address for the selected asset are disabled with "(no ASSET)" hint
+   - Fields remain editable after auto-fill
+   - Changing asset resets destination to "Custom"
+   - Changing network re-resolves the destination address
+
+3. **Extracted mock deposit addresses** — Moved `mockDepositAddresses` from `DepositTab.tsx` to shared `mockData.ts`, used by both DepositTab and WithdrawTab.
+
+**Phase 2 note — deposit addresses must be fetched from API:**
+The withdraw "To" auto-fill currently uses mock deposit addresses. In Phase 2, these MUST be fetched from each destination exchange's deposit address API endpoint (e.g., Binance `GET /sapi/v1/capital/deposit/address`, Upbit `POST /v1/deposits/generate_coin_address`). Deposit addresses are NOT pre-saved — they must be fetched on demand. This is noted in code comments in `mockData.ts` and `WithdrawTab.tsx`.
+
+**Files changed:**
+- `src/components/widgets/ExchangeWidget/index.tsx` — per-exchange state maps for all panels, opTab, pair
+- `src/components/widgets/ExchangeWidget/mockData.ts` — new shared mock deposit addresses
+- `src/components/widgets/ExchangeWidget/tabs/OrderTab.tsx` — exported `OrderState`/`DEFAULT_ORDER_STATE`, accept state+onChange props
+- `src/components/widgets/ExchangeWidget/tabs/DepositTab.tsx` — exported state type, accept props, import from mockData
+- `src/components/widgets/ExchangeWidget/tabs/WithdrawTab.tsx` — "To" destination dropdown, auto-fill logic, exported state type
+- `src/components/widgets/ExchangeWidget/tabs/TransferTab.tsx` — exported state type, accept props
+- `src/components/widgets/ExchangeWidget/tabs/MarginTab.tsx` — exported state type, accept props
+
+**Build & lint:** Both pass cleanly.
