@@ -1,3 +1,135 @@
+// --- Balance data types and mock data ---
+
+export interface BalanceRow {
+  asset: string
+  free: number
+  locked: number
+  usdValue: number
+  /** Only for margin wallets: outstanding debt */
+  debt?: number
+  /** Only for margin wallets: accrued interest */
+  interest?: number
+  /** Only for margin_isolated: the pair this balance belongs to (e.g. "BTCUSDT") */
+  isolatedPair?: string
+}
+
+export type WalletType = 'spot' | 'margin_isolated' | 'margin_cross' | 'futures'
+
+/**
+ * Per-exchange, per-wallet-type balance data.
+ * Exchanges without margin/futures only have 'spot'.
+ */
+export const mockWalletBalances: Record<string, Partial<Record<WalletType, BalanceRow[]>>> = {
+  Upbit: {
+    spot: [
+      { asset: 'BTC', free: 0.10234567, locked: 0, usdValue: 9953.22 },
+      { asset: 'ETH', free: 2.00891234, locked: 0.50123, usdValue: 8556.43 },
+      { asset: 'XRP', free: 10234.56789, locked: 0, usdValue: 24870.09 },
+      { asset: 'KRW', free: 2534821, locked: 0, usdValue: 1810.59 },
+    ],
+  },
+  Bithumb: {
+    spot: [
+      { asset: 'BTC', free: 0.05012345, locked: 0, usdValue: 4874.51 },
+      { asset: 'ETH', free: 1.50987654, locked: 0, usdValue: 5152.88 },
+      { asset: 'XRP', free: 3012.345678, locked: 0, usdValue: 7320.0 },
+    ],
+  },
+  Binance: {
+    spot: [
+      { asset: 'BTC', free: 0.54231987, locked: 0.01005, usdValue: 53695.23 },
+      { asset: 'ETH', free: 4.23145678, locked: 0, usdValue: 14434.62 },
+      { asset: 'USDT', free: 12450.12345678, locked: 500.0, usdValue: 12950.12 },
+      { asset: 'SOL', free: 25.00123456, locked: 0, usdValue: 4375.22 },
+      { asset: 'XRP', free: 5000.987654, locked: 0, usdValue: 12152.4 },
+    ],
+    margin_isolated: [
+      { asset: 'BTC', free: 0.05, locked: 0, usdValue: 4862.5, debt: 0.02, interest: 0.00012, isolatedPair: 'BTCUSDT' },
+      { asset: 'USDT', free: 1200, locked: 0, usdValue: 1200, debt: 500, interest: 0.85, isolatedPair: 'BTCUSDT' },
+      { asset: 'ETH', free: 1.5, locked: 0, usdValue: 5118, debt: 0.5, interest: 0.0008, isolatedPair: 'ETHUSDT' },
+      { asset: 'USDT', free: 800, locked: 0, usdValue: 800, debt: 0, interest: 0, isolatedPair: 'ETHUSDT' },
+    ],
+    margin_cross: [
+      { asset: 'BTC', free: 0.1, locked: 0, usdValue: 9725, debt: 0.03, interest: 0.00015 },
+      { asset: 'ETH', free: 2.0, locked: 0, usdValue: 6824, debt: 0, interest: 0 },
+      { asset: 'USDT', free: 5000, locked: 0, usdValue: 5000, debt: 2000, interest: 1.25 },
+    ],
+    futures: [
+      { asset: 'USDT', free: 8500, locked: 1200, usdValue: 9700 },
+      { asset: 'BNB', free: 10.5, locked: 0, usdValue: 6352.5 },
+    ],
+  },
+  Bybit: {
+    spot: [
+      { asset: 'BTC', free: 0.32001234, locked: 0, usdValue: 31121.2 },
+      { asset: 'ETH', free: 5.00012345, locked: 1.00234, usdValue: 20480.02 },
+      { asset: 'USDT', free: 8500.56789012, locked: 0, usdValue: 8500.57 },
+    ],
+    margin_isolated: [
+      { asset: 'BTC', free: 0.02, locked: 0, usdValue: 1945, debt: 0.01, interest: 0.00005, isolatedPair: 'BTCUSDT' },
+      { asset: 'USDT', free: 500, locked: 0, usdValue: 500, debt: 200, interest: 0.32, isolatedPair: 'BTCUSDT' },
+    ],
+    margin_cross: [
+      { asset: 'USDT', free: 3000, locked: 0, usdValue: 3000, debt: 1000, interest: 0.65 },
+      { asset: 'ETH', free: 1.0, locked: 0, usdValue: 3412, debt: 0, interest: 0 },
+    ],
+    futures: [
+      { asset: 'USDT', free: 5000, locked: 800, usdValue: 5800 },
+    ],
+  },
+  Coinbase: {
+    spot: [
+      { asset: 'BTC', free: 0.15098765, locked: 0, usdValue: 14683.55 },
+      { asset: 'ETH', free: 3.00456789, locked: 0, usdValue: 10253.09 },
+      { asset: 'USD', free: 5000.12, locked: 0, usdValue: 5000.12 },
+    ],
+  },
+  OKX: {
+    spot: [
+      { asset: 'BTC', free: 0.20012345, locked: 0.05001, usdValue: 24327.02 },
+      { asset: 'ETH', free: 6.00123456, locked: 0, usdValue: 20479.21 },
+      { asset: 'USDT', free: 15000.98765432, locked: 2000.0, usdValue: 17000.99 },
+      { asset: 'OKB', free: 100.12345678, locked: 0, usdValue: 4505.56 },
+    ],
+    margin_isolated: [
+      { asset: 'BTC', free: 0.03, locked: 0, usdValue: 2917.5, debt: 0.01, interest: 0.00008, isolatedPair: 'BTCUSDT' },
+      { asset: 'USDT', free: 1500, locked: 0, usdValue: 1500, debt: 800, interest: 0.55, isolatedPair: 'BTCUSDT' },
+    ],
+    margin_cross: [
+      { asset: 'USDT', free: 6000, locked: 0, usdValue: 6000, debt: 1500, interest: 0.95 },
+      { asset: 'ETH', free: 1.5, locked: 0, usdValue: 5118, debt: 0, interest: 0 },
+    ],
+    futures: [
+      { asset: 'USDT', free: 10000, locked: 3000, usdValue: 13000 },
+    ],
+  },
+}
+
+/**
+ * Mock price index for margin pairs.
+ * Phase 2: fetched from GET /sapi/v1/margin/priceIndex (Binance) or equivalent.
+ */
+export const mockPriceIndex: Record<string, number> = {
+  BTCUSDT: 97250,
+  ETHUSDT: 3412,
+  XRPUSDT: 2.43,
+  BNBUSDT: 605,
+  SOLUSDT: 175,
+  OKBUSDT: 45,
+}
+
+/**
+ * Mock enabled isolated margin pairs per exchange.
+ * Phase 2: fetched from exchange APIs.
+ */
+export const mockEnabledIsolatedPairs: Record<string, string[]> = {
+  Binance: ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT', 'BNBUSDT'],
+  Bybit: ['BTCUSDT', 'ETHUSDT', 'XRPUSDT'],
+  OKX: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
+}
+
+// --- Deposit address mock data ---
+
 /**
  * Mock deposit addresses per exchange.
  *

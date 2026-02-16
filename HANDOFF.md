@@ -655,6 +655,31 @@ Exchange WSs ──→ Rust (tokio) ──→ Tauri Event ──→ React State 
 - HMAC signing in Rust
 - React only sends intent ("buy 0.1 BTC on Binance")
 
+### Phase 1 Mock → Phase 2 API Replacement Tracker
+
+Phase 1 uses mock data and placeholder formulas throughout the frontend. This table tracks every mock that must be replaced with a real Tauri `invoke()` → Rust API call in Phase 2. Each entry notes the current mock behavior and the target endpoint.
+
+| Widget / Tab | Mock | Current Behavior | Phase 2 Target | File |
+|-------------|------|-----------------|----------------|------|
+| **MarginTab** — Max Borrowable | `collateral / priceIndex * 0.98` | Arbitrary 2% haircut placeholder | Binance `GET /sapi/v1/margin/maxBorrowable`, Bybit/OKX equivalents. Server returns real max based on margin level, existing debt, risk params | `tabs/MarginTab.tsx` |
+| **MarginTab** — Calc Optimized | `collateral / 2 / priceIndex` | Legacy formula using `mockPriceIndex`, 50% collateral ratio. Collateral is user input, price index is mock. | Fetch real-time price from `GET /sapi/v1/margin/priceIndex` (Bybit/OKX equivalents), then apply client-side `/2` formula with live price. Collateral remains user input. | `tabs/MarginTab.tsx` |
+| **MarginTab** — Price Index | `mockPriceIndex` static map | Hardcoded prices (BTC=97250, etc.) | Binance `GET /sapi/v1/margin/priceIndex`, Bybit/OKX equivalents | `mockData.ts` |
+| **MarginTab** — Outstanding debt | Static text `"0.2500 + 0.0012 interest"` | Fake repay info | Query from margin account balance endpoint per exchange | `tabs/MarginTab.tsx` |
+| **TransferTab** — Max Transferable | `mockMaxTransferable` static map | Hardcoded per-asset values | Binance `GET /sapi/v1/margin/maxTransferable`, Bybit/OKX equivalents | `tabs/TransferTab.tsx` |
+| **TransferTab** — Query Enabled Pairs | `mockEnabledIsolatedPairs` | Returns static list per exchange | Binance `GET /sapi/v1/margin/isolated/allPairs` or account query | `tabs/TransferTab.tsx`, `mockData.ts` |
+| **TransferTab** — Enable/Disable Pair | Local state mutation only | Adds/removes from local array | Binance `POST /sapi/v1/margin/isolated/create` (enable), `DELETE /sapi/v1/margin/isolated/account` (disable) | `tabs/TransferTab.tsx` |
+| **BalanceTab** — All balances | `mockWalletBalances` | Static per-exchange, per-wallet-type data | Spot: `GET /api/v3/account`, Margin: `GET /sapi/v1/margin/isolated/account`, Cross: `GET /sapi/v1/margin/account`, Futures: futures account endpoint | `mockData.ts` |
+| **DepositTab** — Deposit addresses | `mockDepositAddresses` | Static addresses per exchange/asset/network | Binance `GET /sapi/v1/capital/deposit/address`, Upbit `POST /v1/deposits/generate_coin_address`, etc. | `mockData.ts` |
+| **WithdrawTab** — "To" auto-fill | Uses `mockDepositAddresses` of destination exchange | Static lookup | Fetch deposit address from destination exchange API on demand | `tabs/WithdrawTab.tsx` |
+| **WithdrawTab** — Submit | No-op button | Does nothing | Binance `POST /sapi/v1/capital/withdraw/apply`, Upbit `POST /v1/withdraws/coin`, etc. | `tabs/WithdrawTab.tsx` |
+| **OrderTab** — Submit | No-op button | Does nothing | Binance `POST /api/v3/order`, Upbit `POST /v1/orders`, etc. | `tabs/OrderTab.tsx` |
+| **OrderTab** — Balances in form | Not shown | No available balance display | Query from balance endpoints, show available balance for selected asset | `tabs/OrderTab.tsx` |
+
+**Pattern for replacement:** Each mock currently lives in either `mockData.ts` (shared data) or inline in the tab component (formulas/handlers). In Phase 2:
+1. Replace `mockData.ts` imports with Tauri `invoke()` calls in a data layer
+2. Replace placeholder formulas with real API responses
+3. Button handlers become `async` with loading states and error handling
+
 ---
 
 ## Phase 3+: Scale
@@ -1502,3 +1527,31 @@ The withdraw "To" auto-fill currently uses mock deposit addresses. In Phase 2, t
 - `src/components/widgets/ExchangeWidget/tabs/MarginTab.tsx` — exported state type, accept props
 
 **Build & lint:** Both pass cleanly.
+
+### 2026-02-16: Balance sub-tabs, Transfer isolated margin, Margin borrow optimization
+
+**Goal:** Upgrade ExchangeWidget Balance/Transfer/Margin tabs to match Binance's feature set.
+
+**Changes made:**
+
+1. **BalanceTab — sub-tabs per wallet type** — Added inner tabs `[Spot | Margin Iso | Margin Cross | Futures]` at top of Balance column. Only shown for exchanges with multiple wallet types (Binance, Bybit, OKX). Upbit/Bithumb/Coinbase show just the spot table with no tabs. Margin tabs add Debt (red) and Interest (orange) columns. Isolated margin rows show pair label (e.g. "BTC (BTCUSDT)"). `walletTab` is local state inside BalanceTab. Moved `mockBalances` out of BalanceTab into `mockData.ts` as `mockWalletBalances` with per-wallet-type data.
+
+2. **TransferTab — isolated margin pair management + Max button** — Removed static "Max transferable" text. Added "Max" button next to Amount input that auto-fills from `mockMaxTransferable`. When From or To is `margin_isolated`: shows Isolated Pair selector dropdown and a pair management section with "Query Enabled Pairs" button (populates chips from `mockEnabledIsolatedPairs`), pair input field with Enable/Disable buttons (max 10 pairs). New state fields: `isolatedPair`, `enabledIsolatedPairs`, `pairInput`.
+
+3. **MarginTab — collateral input + calculation buttons** — Removed static "Max borrowable" / "Outstanding" text. Added Collateral input (shown in borrow mode, labeled with quote asset). Added "Max Borrowable" button (`collateral / priceIndex * 0.98` — placeholder, Phase 2 must use real API). Added "Calc Optimized" button (legacy formula `collateral / 2 / priceIndex` floored to 8 decimals — uses 50% collateral ratio for safe transfer-out). Info display shows Price Index when borrowing, Outstanding when repaying. New state field: `collateral`. Both buttons have Phase 2 comments noting that Max Borrowable must use `GET /sapi/v1/margin/maxBorrowable` and Calc Optimized must fetch live price index from `GET /sapi/v1/margin/priceIndex`.
+
+4. **mockData.ts — expanded mock data** — Added `BalanceRow` type (with optional `debt`, `interest`, `isolatedPair`), `WalletType` type, `mockWalletBalances` (per-exchange per-wallet-type), `mockPriceIndex` (BTCUSDT: 97250, ETHUSDT: 3412, etc.), `mockEnabledIsolatedPairs` (per-exchange).
+
+5. **eslint.config.js — fixed pre-existing lint errors** — Added `allowConstantExport: true` rule override to match HANDOFF.md spec. The `reactRefresh.configs.vite` preset was setting `only-export-components` to error without this flag, breaking all tab files that export `DEFAULT_*_STATE` constants alongside components.
+
+6. **HANDOFF.md — Phase 1 Mock → Phase 2 API Replacement Tracker** — Added comprehensive table under Phase 2 section tracking 13 mocks across all ExchangeWidget tabs that must be replaced with real Tauri `invoke()` → Rust API calls. Covers balances, deposit addresses, max borrowable/transferable, price index, outstanding debt, order/withdraw submission, isolated pair enable/disable.
+
+**Files changed:**
+- `src/components/widgets/ExchangeWidget/mockData.ts` — wallet balances, price index, enabled isolated pairs
+- `src/components/widgets/ExchangeWidget/tabs/BalanceTab.tsx` — sub-tabs, margin columns, imports from mockData
+- `src/components/widgets/ExchangeWidget/tabs/TransferTab.tsx` — Max button, isolated pair management, new state fields
+- `src/components/widgets/ExchangeWidget/tabs/MarginTab.tsx` — collateral input, Max Borrowable, Calc Optimized, Phase 2 comments
+- `eslint.config.js` — `allowConstantExport: true`
+- `HANDOFF.md` — Phase 2 API tracker, session log
+
+**Build & lint:** Build passes. Lint passes (0 errors, 5 warnings — pre-existing `react-refresh` warnings from exporting state types alongside components).
