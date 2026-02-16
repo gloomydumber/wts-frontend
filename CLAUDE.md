@@ -26,6 +26,7 @@ Read HANDOFF.md at session start. Update HANDOFF.md before session close with wh
 
 - **react-grid-layout must stay on v1.4.4** — v2.2.2 has O(n) per-widget resize overhead (68% slower at 32 widgets, 15–21% jank). Benchmarked in [`../rgl-performance-test`](https://github.com/gloomydumber/rgl-performance-test). Re-benchmark when v2.3+ releases.
 - Avoid dynamic MUI `sx` props in hot render paths — use inline `style={}` instead (prevents Emotion style leak)
+- **ExchangeWidget per-exchange state maps** — All panel state is lifted into `index.tsx` as `Record<exchangeId, State>` maps (order, deposit, withdraw, transfer, margin, opTab, pair). These are plain `useState` objects — acceptable for Phase 1 mock data. In Phase 2 with real-time API data, consider moving to Jotai atoms or consolidating into a single `useReducer` to avoid O(n) shallow-copy overhead on frequent updates across many exchanges.
 - See HANDOFF.md Performance Notes for full details
 
 ## Skills
