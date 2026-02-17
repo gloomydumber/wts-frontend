@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Box, Select, MenuItem, Typography, IconButton, Tooltip } from '@mui/material'
+import { Box, Autocomplete, TextField, Typography, IconButton, Tooltip } from '@mui/material'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import type { ExchangeConfig } from '../types'
-import { mockDepositAddresses } from '../mockData'
+import type { ExchangeMetadata } from '../preload'
 
 export interface DepositState {
   asset: string
@@ -16,12 +16,13 @@ export const DEFAULT_DEPOSIT_STATE: DepositState = {
 
 interface DepositTabProps {
   exchange: ExchangeConfig
+  metadata: ExchangeMetadata
   state: DepositState
   onChange: (update: Partial<DepositState>) => void
 }
 
-export default function DepositTab({ exchange, state, onChange }: DepositTabProps) {
-  const depositAddresses = mockDepositAddresses[exchange.id] || {}
+export default function DepositTab({ metadata, state, onChange }: DepositTabProps) {
+  const depositAddresses = metadata.depositInfo
   const assets = Object.keys(depositAddresses)
   const asset = assets.includes(state.asset) ? state.asset : (assets.includes('USDT') ? 'USDT' : assets[0] || 'BTC')
 
@@ -36,8 +37,6 @@ export default function DepositTab({ exchange, state, onChange }: DepositTabProp
     setTimeout(() => setCopiedField(null), 1500)
   }
 
-  const selectSx = { fontSize: '0.8rem' }
-
   const handleAssetChange = (a: string) => {
     const nets = Object.keys(depositAddresses[a] || {})
     onChange({ asset: a, network: nets[0] || '' })
@@ -45,14 +44,32 @@ export default function DepositTab({ exchange, state, onChange }: DepositTabProp
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, flex: 1 }}>
-      <Select value={asset} onChange={(e) => handleAssetChange(e.target.value)} size="small" sx={selectSx}>
-        {assets.map((a) => <MenuItem key={a} value={a} sx={selectSx}>{a}</MenuItem>)}
-      </Select>
+      <Autocomplete
+        value={asset}
+        onChange={(_, v) => { if (v) handleAssetChange(v) }}
+        options={assets}
+        size="small"
+        fullWidth
+        disableClearable
+        renderInput={(params) => (
+          <TextField {...params} variant="outlined" slotProps={{ htmlInput: { ...params.inputProps, style: { fontSize: '0.8rem' } } }} />
+        )}
+        slotProps={{ listbox: { sx: { fontSize: '0.7rem' } }, paper: { sx: { fontSize: '0.7rem' } } }}
+      />
 
       {networks.length > 1 && (
-        <Select value={network} onChange={(e) => onChange({ network: e.target.value })} size="small" sx={selectSx}>
-          {networks.map((n) => <MenuItem key={n} value={n} sx={selectSx}>{n}</MenuItem>)}
-        </Select>
+        <Autocomplete
+          value={network}
+          onChange={(_, v) => { if (v) onChange({ network: v }) }}
+          options={networks}
+          size="small"
+          fullWidth
+          disableClearable
+          renderInput={(params) => (
+            <TextField {...params} variant="outlined" slotProps={{ htmlInput: { ...params.inputProps, style: { fontSize: '0.8rem' } } }} />
+          )}
+          slotProps={{ listbox: { sx: { fontSize: '0.7rem' } }, paper: { sx: { fontSize: '0.7rem' } } }}
+        />
       )}
 
       {entry && (

@@ -1,6 +1,7 @@
-import { Box, TextField, Select, MenuItem, Button, Typography } from '@mui/material'
+import { Box, TextField, Autocomplete, Button, Typography } from '@mui/material'
 import type { ExchangeConfig } from '../types'
 import { EXCHANGES } from '../types'
+import type { ExchangeMetadata } from '../preload'
 import { mockDepositAddresses } from '../mockData'
 
 export interface WithdrawState {
@@ -21,48 +22,15 @@ export const DEFAULT_WITHDRAW_STATE: WithdrawState = {
   amount: '',
 }
 
-const networksByExchange: Record<string, Record<string, { name: string; fee: string }[]>> = {
-  Upbit: {
-    BTC: [{ name: 'Bitcoin', fee: '0.0005 BTC' }],
-    ETH: [{ name: 'ERC20', fee: '0.01 ETH' }],
-    XRP: [{ name: 'Ripple', fee: '0.25 XRP' }],
-  },
-  Bithumb: {
-    BTC: [{ name: 'Bitcoin', fee: '0.001 BTC' }],
-    ETH: [{ name: 'ERC20', fee: '0.01 ETH' }],
-    XRP: [{ name: 'Ripple', fee: '1 XRP' }],
-  },
-  Binance: {
-    BTC: [{ name: 'Bitcoin', fee: '0.0005 BTC' }, { name: 'BEP20', fee: '0.0000005 BTC' }],
-    ETH: [{ name: 'ERC20', fee: '0.005 ETH' }, { name: 'Arbitrum One', fee: '0.0001 ETH' }, { name: 'BEP20', fee: '0.000005 ETH' }],
-    USDT: [{ name: 'ERC20', fee: '10 USDT' }, { name: 'TRC20', fee: '1 USDT' }, { name: 'BEP20', fee: '0.5 USDT' }],
-    XRP: [{ name: 'Ripple', fee: '0.25 XRP' }],
-    SOL: [{ name: 'Solana', fee: '0.01 SOL' }],
-  },
-  Bybit: {
-    BTC: [{ name: 'Bitcoin', fee: '0.0005 BTC' }],
-    ETH: [{ name: 'ERC20', fee: '0.005 ETH' }, { name: 'Arbitrum One', fee: '0.0001 ETH' }],
-    USDT: [{ name: 'ERC20', fee: '10 USDT' }, { name: 'TRC20', fee: '1 USDT' }],
-  },
-  Coinbase: {
-    BTC: [{ name: 'Bitcoin', fee: '0.0001 BTC' }],
-    ETH: [{ name: 'ERC20', fee: '0.005 ETH' }],
-  },
-  OKX: {
-    BTC: [{ name: 'Bitcoin', fee: '0.0005 BTC' }],
-    ETH: [{ name: 'ERC20', fee: '0.005 ETH' }, { name: 'Arbitrum One', fee: '0.0001 ETH' }],
-    USDT: [{ name: 'ERC20', fee: '10 USDT' }, { name: 'TRC20', fee: '0.8 USDT' }, { name: 'Polygon', fee: '0.5 USDT' }],
-  },
-}
-
 interface WithdrawTabProps {
   exchange: ExchangeConfig
+  metadata: ExchangeMetadata
   state: WithdrawState
   onChange: (update: Partial<WithdrawState>) => void
 }
 
-export default function WithdrawTab({ exchange, state, onChange }: WithdrawTabProps) {
-  const exchangeNetworks = networksByExchange[exchange.id] || {}
+export default function WithdrawTab({ exchange, metadata, state, onChange }: WithdrawTabProps) {
+  const exchangeNetworks = metadata.withdrawInfo
   const assets = Object.keys(exchangeNetworks)
 
   const asset = assets.includes(state.asset) ? state.asset : (assets.includes('USDT') ? 'USDT' : assets[0] || 'BTC')
@@ -125,37 +93,72 @@ export default function WithdrawTab({ exchange, state, onChange }: WithdrawTabPr
     '& .MuiInputBase-input': { fontSize: '0.85rem', py: '8px' },
     '& .MuiInputLabel-root': { fontSize: '0.75rem' },
   }
-  const selectSx = { fontSize: '0.8rem' }
+
+  // "To" destination options: 'custom' + other exchanges
+  const destinationOptions = ['custom', ...otherExchanges.map((ex) => ex.id)]
+  const getDestLabel = (id: string) => {
+    if (id === 'custom') return 'Custom'
+    const ex = otherExchanges.find((e) => e.id === id)
+    if (!ex) return id
+    return destHasAsset(id) ? ex.label : `${ex.label} (no ${asset})`
+  }
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1 }}>
-      <Select value={asset} onChange={(e) => handleAssetChange(e.target.value)} size="small" sx={selectSx}>
-        {assets.map((a) => <MenuItem key={a} value={a} sx={selectSx}>{a}</MenuItem>)}
-      </Select>
+      <Autocomplete
+        value={asset}
+        onChange={(_, v) => { if (v) handleAssetChange(v) }}
+        options={assets}
+        size="small"
+        fullWidth
+        disableClearable
+        renderInput={(params) => (
+          <TextField {...params} variant="outlined" slotProps={{ htmlInput: { ...params.inputProps, style: { fontSize: '0.8rem' } } }} />
+        )}
+        slotProps={{ listbox: { sx: { fontSize: '0.7rem' } }, paper: { sx: { fontSize: '0.7rem' } } }}
+      />
 
       {nets.length > 1 && (
-        <Select value={safeNetIdx} onChange={(e) => handleNetworkChange(Number(e.target.value))} size="small" sx={selectSx}>
-          {nets.map((n, i) => <MenuItem key={n.name} value={i} sx={selectSx}>{n.name}</MenuItem>)}
-        </Select>
+        <Autocomplete
+          value={nets[safeNetIdx]?.name || ''}
+          onChange={(_, v) => {
+            const idx = nets.findIndex((n) => n.name === v)
+            if (idx >= 0) handleNetworkChange(idx)
+          }}
+          options={nets.map((n) => n.name)}
+          size="small"
+          fullWidth
+          disableClearable
+          renderInput={(params) => (
+            <TextField {...params} variant="outlined" slotProps={{ htmlInput: { ...params.inputProps, style: { fontSize: '0.8rem' } } }} />
+          )}
+          slotProps={{ listbox: { sx: { fontSize: '0.7rem' } }, paper: { sx: { fontSize: '0.7rem' } } }}
+        />
       )}
 
       {/* Destination exchange — auto-fills address/memo from target exchange's deposit address */}
       <Box sx={{ mb: 1 }}>
         <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>To</Typography>
-        <Select value={destination} onChange={(e) => handleDestinationChange(e.target.value)} size="small" fullWidth sx={selectSx}>
-          <MenuItem value="custom" sx={selectSx}>Custom</MenuItem>
-          {otherExchanges.map((ex) => (
-            <MenuItem key={ex.id} value={ex.id} disabled={!destHasAsset(ex.id)} sx={selectSx}>
-              {ex.label}{!destHasAsset(ex.id) ? ` (no ${asset})` : ''}
-            </MenuItem>
-          ))}
-        </Select>
+        <Autocomplete
+          value={destination}
+          onChange={(_, v) => { if (v) handleDestinationChange(v) }}
+          options={destinationOptions}
+          getOptionLabel={getDestLabel}
+          getOptionDisabled={(opt) => opt !== 'custom' && !destHasAsset(opt)}
+          size="small"
+          fullWidth
+          disableClearable
+          renderInput={(params) => (
+            <TextField {...params} variant="outlined" slotProps={{ htmlInput: { ...params.inputProps, style: { fontSize: '0.8rem' } } }} />
+          )}
+          slotProps={{ listbox: { sx: { fontSize: '0.7rem' } }, paper: { sx: { fontSize: '0.7rem' } } }}
+        />
       </Box>
 
-      <TextField label="Address" value={address} onChange={(e) => onChange({ address: e.target.value })} size="small" fullWidth sx={inputSx} />
+      <TextField label="Address" value={address} onChange={(e) => onChange({ address: e.target.value })} size="small" fullWidth disabled={destination !== 'custom'} sx={{ ...inputSx, mb: 1 }} />
 
       {(asset === 'XRP' || (destination !== 'custom' && memo)) && (
-        <TextField label="Memo / Tag" value={memo} onChange={(e) => onChange({ memo: e.target.value })} size="small" fullWidth sx={inputSx} />
+        <TextField label="Memo / Tag" value={memo} onChange={(e) => onChange({ memo: e.target.value })} size="small" fullWidth disabled={destination !== 'custom'} sx={{ ...inputSx, mb: 1 }} />
       )}
 
       <TextField label="Amount" value={amount} onChange={(e) => onChange({ amount: e.target.value })} size="small" fullWidth sx={inputSx} />

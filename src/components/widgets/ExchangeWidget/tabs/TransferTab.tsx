@@ -1,5 +1,6 @@
-import { Box, TextField, Select, MenuItem, Button, Typography, Chip } from '@mui/material'
+import { Box, TextField, Select, MenuItem, Autocomplete, Button, Typography, Chip } from '@mui/material'
 import type { ExchangeConfig, TransferTarget } from '../types'
+import type { ExchangeMetadata } from '../preload'
 import { mockEnabledIsolatedPairs } from '../mockData'
 
 export interface TransferState {
@@ -29,12 +30,6 @@ const TRANSFER_LABELS: Record<TransferTarget, string> = {
   futures: 'Futures',
 }
 
-const assetsByExchange: Record<string, string[]> = {
-  Binance: ['BTC', 'ETH', 'USDT', 'BNB', 'SOL', 'XRP'],
-  Bybit: ['BTC', 'ETH', 'USDT', 'SOL', 'XRP'],
-  OKX: ['BTC', 'ETH', 'USDT', 'OKB', 'SOL'],
-}
-
 /** Mock max transferable values per asset */
 const mockMaxTransferable: Record<string, number> = {
   BTC: 0.5423,
@@ -48,19 +43,26 @@ const mockMaxTransferable: Record<string, number> = {
 
 interface TransferTabProps {
   exchange: ExchangeConfig
+  metadata: ExchangeMetadata
   state: TransferState
   onChange: (update: Partial<TransferState>) => void
 }
 
-export default function TransferTab({ exchange, state, onChange }: TransferTabProps) {
+export default function TransferTab({ exchange, metadata, state, onChange }: TransferTabProps) {
   const targets = exchange.features.transfer
-  const assets = assetsByExchange[exchange.id] || ['BTC', 'ETH', 'USDT']
+  const assets = metadata.transferAssets.length > 0 ? metadata.transferAssets : ['BTC', 'ETH', 'USDT']
 
   const from = targets.includes(state.from) ? state.from : targets[0] || 'spot'
   const to = targets.includes(state.to) && state.to !== from ? state.to : (targets.find((t) => t !== from) || targets[0] || 'spot')
   const { asset, amount, isolatedPair, enabledIsolatedPairs, pairInput } = state
 
   const showIsolatedSection = from === 'margin_isolated' || to === 'margin_isolated'
+
+  // When margin_isolated is selected, only base/quote assets of the pair are transferable
+  // Uses pre-loaded pairInfo from exchangeInfo API (Phase 2: real data from Tauri invoke)
+  const pairInfo = showIsolatedSection ? metadata.pairInfo[isolatedPair] : null
+  const filteredAssets = pairInfo ? assets.filter((a) => a === pairInfo.base || a === pairInfo.quote) : assets
+  const safeAsset = filteredAssets.includes(asset) ? asset : filteredAssets[0] || asset
 
   const selectSx = { fontSize: '0.7rem' }
   const inputSx = {
@@ -109,13 +111,22 @@ export default function TransferTab({ exchange, state, onChange }: TransferTabPr
         </Box>
       </Box>
 
-      <Select value={asset} onChange={(e) => onChange({ asset: e.target.value })} size="small" sx={selectSx}>
-        {assets.map((a) => <MenuItem key={a} value={a} sx={selectSx}>{a}</MenuItem>)}
-      </Select>
+      <Autocomplete
+        value={safeAsset}
+        onChange={(_, v) => { if (v) onChange({ asset: v }) }}
+        options={filteredAssets}
+        size="small"
+        fullWidth
+        disableClearable
+        renderInput={(params) => (
+          <TextField {...params} variant="outlined" slotProps={{ htmlInput: { ...params.inputProps, style: { fontSize: '0.7rem' } } }} />
+        )}
+        slotProps={{ listbox: { sx: { fontSize: '0.7rem' } }, paper: { sx: { fontSize: '0.7rem' } } }}
+      />
 
       {/* Isolated pair selector — shown when margin_isolated is From or To */}
       {showIsolatedSection && (
-        <Box>
+        <Box sx={{ mb: 1 }}>
           <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>Isolated Pair</Typography>
           <Select
             value={isolatedPair}

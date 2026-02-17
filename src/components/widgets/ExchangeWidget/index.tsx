@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react'
-import { Box, Tabs, Tab, Divider, Autocomplete, TextField, Typography } from '@mui/material'
+import { Box, Tabs, Tab, Divider, Autocomplete, TextField, Typography, LinearProgress } from '@mui/material'
 import { EXCHANGE_COLORS } from '../../../types/exchange'
 import { EXCHANGES, getAvailableTabs, type OperationTab } from './types'
+import { useExchangeMetadata, type ExchangeMetadata } from './preload'
 import BalanceTab from './tabs/BalanceTab'
 import OrderTab, { DEFAULT_ORDER_STATE, type OrderState } from './tabs/OrderTab'
 import DepositTab, { DEFAULT_DEPOSIT_STATE, type DepositState } from './tabs/DepositTab'
@@ -16,15 +17,6 @@ const OP_LABELS: Record<OperationTab, string> = {
   margin: 'Margin',
 }
 
-const pairsByExchange: Record<string, string[]> = {
-  Upbit: ['BTC/KRW', 'ETH/KRW', 'XRP/KRW', 'SOL/KRW', 'DOGE/KRW'],
-  Bithumb: ['BTC/KRW', 'ETH/KRW', 'XRP/KRW', 'EOS/KRW'],
-  Binance: ['BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'SOL/USDT', 'BNB/USDT'],
-  Bybit: ['BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'SOL/USDT'],
-  Coinbase: ['BTC/USD', 'ETH/USD', 'SOL/USD', 'XRP/USD'],
-  OKX: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'OKB/USDT'],
-}
-
 export default function ExchangeWidget() {
   const [exchangeIdx, setExchangeIdx] = useState(0)
   const [opTabs, setOpTabs] = useState<Record<string, OperationTab>>({})
@@ -37,7 +29,11 @@ export default function ExchangeWidget() {
 
   const exchange = EXCHANGES[exchangeIdx]
   const availableTabs = getAvailableTabs(exchange)
-  const exchangePairs = pairsByExchange[exchange.id] || ['BTC/USDT']
+
+  // Pre-load layer: fetch exchange metadata (mock in Phase 1, real API in Phase 2)
+  const { metadata, loading, progress } = useExchangeMetadata(exchange.id)
+
+  const exchangePairs = metadata?.tradingPairs || ['BTC/USDT']
 
   const opTab = opTabs[exchange.id] ?? availableTabs[0] ?? 'deposit'
   const pair = pairs[exchange.id] ?? exchangePairs[0]
@@ -121,79 +117,162 @@ export default function ExchangeWidget() {
         ))}
       </Tabs>
 
-      {/* Three-column body: Balance | Order | Operations */}
-      <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* Column 1: Balance — always visible */}
-        <Box sx={{ flex: '3 1 0', minWidth: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-          <BalanceTab exchange={exchange} />
-        </Box>
+      {/* Loading UI — shown while metadata is being fetched */}
+      {loading ? (
+        <LoadingView exchangeLabel={exchange.label} progress={progress} />
+      ) : (
+        <WidgetBody
+          exchange={exchange}
+          metadata={metadata!}
+          exchangePairs={exchangePairs}
+          pair={pair}
+          opTab={opTab}
+          availableTabs={availableTabs}
+          orderState={orderState}
+          depositState={depositState}
+          withdrawState={withdrawState}
+          transferState={transferState}
+          marginState={marginState}
+          onPairChange={handlePairChange}
+          onOpChange={handleOpChange}
+          onOrderChange={handleOrderChange}
+          onDepositChange={handleDepositChange}
+          onWithdrawChange={handleWithdrawChange}
+          onTransferChange={handleTransferChange}
+          onMarginChange={handleMarginChange}
+        />
+      )}
+    </Box>
+  )
+}
 
-        <Divider orientation="vertical" flexItem sx={{ borderColor: 'rgba(0,255,0,0.12)' }} />
+// --- Loading UI ---
 
-        {/* Column 2: Asset selector + Order — always visible */}
-        <Box sx={{ flex: '3 1 0', minWidth: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-          {/* Asset / Pair selector */}
-          <Box sx={{ p: 1, borderBottom: '1px solid rgba(0,255,0,0.12)' }}>
-            <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', textTransform: 'uppercase', mb: 0.5 }}>
-              Asset
-            </Typography>
-            <Autocomplete
-              value={exchangePairs.includes(pair) ? pair : exchangePairs[0]}
-              onChange={(_, v) => { if (v) handlePairChange(v) }}
-              onInputChange={(_, v, reason) => { if (reason === 'input') handlePairChange(v) }}
-              options={exchangePairs}
-              freeSolo
-              size="small"
-              fullWidth
-              disableClearable
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  variant="outlined"
-                  slotProps={{ htmlInput: { ...params.inputProps, style: { fontSize: '0.75rem', fontWeight: 700 } } }}
-                />
-              )}
-              slotProps={{ listbox: { sx: { fontSize: '0.7rem' } } }}
-            />
-          </Box>
-          {/* Order form */}
-          <Box sx={{ flex: 1, p: 1, display: 'flex', flexDirection: 'column' }}>
-            <OrderTab exchange={exchange} pair={pair} state={orderState} onChange={handleOrderChange} />
-          </Box>
-        </Box>
+function LoadingView({ exchangeLabel, progress }: {
+  exchangeLabel: string
+  progress: { total: number; loaded: number } | null
+}) {
+  const pct = progress ? (progress.loaded / progress.total) * 100 : 0
 
-        <Divider orientation="vertical" flexItem sx={{ borderColor: 'rgba(0,255,0,0.12)' }} />
+  return (
+    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, p: 3 }}>
+      <Typography sx={{ fontSize: '0.7rem', color: 'rgba(0,255,0,0.6)' }}>
+        Loading {exchangeLabel} metadata...
+      </Typography>
+      <Box sx={{ width: '60%' }}>
+        <LinearProgress variant="determinate" value={pct} sx={{
+          height: 4,
+          borderRadius: 2,
+          bgcolor: 'rgba(0,255,0,0.08)',
+          '& .MuiLinearProgress-bar': { bgcolor: '#00ff00' },
+        }} />
+      </Box>
+      {progress && (
+        <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)' }}>
+          {progress.loaded}/{progress.total}
+        </Typography>
+      )}
+    </Box>
+  )
+}
 
-        {/* Column 3: Deposit / Withdraw / Transfer / Margin tabs */}
-        <Box sx={{ flex: '4 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <Tabs
-            value={opTab}
-            onChange={handleOpChange}
-            variant="scrollable"
-            scrollButtons={false}
-            sx={{ minHeight: 24 }}
-          >
-            {availableTabs.map((tab) => (
-              <Tab
-                key={tab}
-                value={tab}
-                label={OP_LABELS[tab]}
-                sx={{
-                  minHeight: 24,
-                  py: 0,
-                  px: 1,
-                  minWidth: 'auto',
-                }}
+// --- Widget body (rendered after metadata is loaded) ---
+
+function WidgetBody({ exchange, metadata, exchangePairs, pair, opTab, availableTabs,
+  orderState, depositState, withdrawState, transferState, marginState,
+  onPairChange, onOpChange, onOrderChange, onDepositChange, onWithdrawChange, onTransferChange, onMarginChange,
+}: {
+  exchange: (typeof EXCHANGES)[number]
+  metadata: ExchangeMetadata
+  exchangePairs: string[]
+  pair: string
+  opTab: OperationTab
+  availableTabs: OperationTab[]
+  orderState: OrderState
+  depositState: DepositState
+  withdrawState: WithdrawState
+  transferState: TransferState
+  marginState: MarginState
+  onPairChange: (v: string) => void
+  onOpChange: (_: unknown, val: OperationTab) => void
+  onOrderChange: (update: Partial<OrderState>) => void
+  onDepositChange: (update: Partial<DepositState>) => void
+  onWithdrawChange: (update: Partial<WithdrawState>) => void
+  onTransferChange: (update: Partial<TransferState>) => void
+  onMarginChange: (update: Partial<MarginState>) => void
+}) {
+  return (
+    <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      {/* Column 1: Balance — always visible */}
+      <Box sx={{ flex: '3 1 0', minWidth: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <BalanceTab exchange={exchange} />
+      </Box>
+
+      <Divider orientation="vertical" flexItem sx={{ borderColor: 'rgba(0,255,0,0.12)' }} />
+
+      {/* Column 2: Asset selector + Order — always visible */}
+      <Box sx={{ flex: '3 1 0', minWidth: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+        {/* Asset / Pair selector */}
+        <Box sx={{ p: 1, borderBottom: '1px solid rgba(0,255,0,0.12)' }}>
+          <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', textTransform: 'uppercase', mb: 0.5 }}>
+            Asset
+          </Typography>
+          <Autocomplete
+            value={exchangePairs.includes(pair) ? pair : exchangePairs[0]}
+            onChange={(_, v) => { if (v) onPairChange(v) }}
+            onInputChange={(_, v, reason) => { if (reason === 'input') onPairChange(v) }}
+            options={exchangePairs}
+            freeSolo
+            size="small"
+            fullWidth
+            disableClearable
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                variant="outlined"
+                slotProps={{ htmlInput: { ...params.inputProps, style: { fontSize: '0.75rem', fontWeight: 700 } } }}
               />
-            ))}
-          </Tabs>
+            )}
+            slotProps={{ listbox: { sx: { fontSize: '0.7rem' } }, paper: { sx: { fontSize: '0.7rem' } } }}
+          />
+        </Box>
+        {/* Order form */}
+        <Box sx={{ flex: 1, p: 1, display: 'flex', flexDirection: 'column' }}>
+          <OrderTab exchange={exchange} pair={pair} state={orderState} onChange={onOrderChange} />
+        </Box>
+      </Box>
 
-          <Box sx={{ flex: 1, overflow: 'auto', p: 1, display: 'flex', flexDirection: 'column' }}>
-            {opTab === 'deposit' && <DepositTab exchange={exchange} state={depositState} onChange={handleDepositChange} />}
-            {opTab === 'withdraw' && <WithdrawTab exchange={exchange} state={withdrawState} onChange={handleWithdrawChange} />}
-            {opTab === 'transfer' && <TransferTab exchange={exchange} state={transferState} onChange={handleTransferChange} />}
-            {opTab === 'margin' && <MarginTab exchange={exchange} state={marginState} onChange={handleMarginChange} />}
-          </Box>
+      <Divider orientation="vertical" flexItem sx={{ borderColor: 'rgba(0,255,0,0.12)' }} />
+
+      {/* Column 3: Deposit / Withdraw / Transfer / Margin tabs */}
+      <Box sx={{ flex: '4 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <Tabs
+          value={opTab}
+          onChange={onOpChange}
+          variant="scrollable"
+          scrollButtons={false}
+          sx={{ minHeight: 24 }}
+        >
+          {availableTabs.map((tab) => (
+            <Tab
+              key={tab}
+              value={tab}
+              label={OP_LABELS[tab]}
+              sx={{
+                minHeight: 24,
+                py: 0,
+                px: 1,
+                minWidth: 'auto',
+              }}
+            />
+          ))}
+        </Tabs>
+
+        <Box sx={{ flex: 1, overflow: 'auto', p: 1, display: 'flex', flexDirection: 'column' }}>
+          {opTab === 'deposit' && <DepositTab exchange={exchange} metadata={metadata} state={depositState} onChange={onDepositChange} />}
+          {opTab === 'withdraw' && <WithdrawTab exchange={exchange} metadata={metadata} state={withdrawState} onChange={onWithdrawChange} />}
+          {opTab === 'transfer' && <TransferTab exchange={exchange} metadata={metadata} state={transferState} onChange={onTransferChange} />}
+          {opTab === 'margin' && <MarginTab exchange={exchange} metadata={metadata} state={marginState} onChange={onMarginChange} />}
         </Box>
       </Box>
     </Box>

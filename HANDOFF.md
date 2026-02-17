@@ -680,6 +680,98 @@ Phase 1 uses mock data and placeholder formulas throughout the frontend. This ta
 2. Replace placeholder formulas with real API responses
 3. Button handlers become `async` with loading states and error handling
 
+### Pre-load / Bootstrap Layer
+
+Before widgets become interactive, they need exchange metadata that populates Autocomplete options, fee displays, network selectors, etc. This data is **not** fetched globally on app start — it is **scoped per widget** so that only the widgets the user has open trigger API calls. Widgets that are closed or not yet added to the layout do not load anything.
+
+#### Principle: Widget-scoped loading
+
+- Each widget is responsible for loading its own metadata when it mounts (or when its exchange context changes).
+- The app shell (AppBar, Drawer, grid layout) renders immediately — no global loading screen.
+- Individual widgets show their own loading/progress state until their metadata is ready.
+- If a widget is closed/removed from layout, its loading is cancelled and its cached metadata can be garbage collected.
+
+#### Loading UX
+
+When a widget is loading metadata, it renders a progress indicator inside its own bounds:
+
+```
+┌─ ExchangeWidget ──────────────────────────────┐
+│  [Upbit] [Bithumb] [Binance] ...              │
+│                                                │
+│        Loading Binance metadata...             │
+│        ████████████░░░░░░░░  4/7               │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+All 7 metadata items are fetched in **parallel** (`Promise.all`). The progress bar advances as each resolves. No per-item detail list — compact UI.
+
+After all metadata for the current exchange is loaded, the widget renders its normal UI. Switching exchange tabs within the widget triggers a new load if that exchange's metadata isn't already cached.
+
+#### Metadata to pre-load per exchange (ExchangeWidget)
+
+| # | Field in `ExchangeMetadata` | Populates | Mock Source | Phase 2 Binance API | Notes |
+|---|---|---|---|---|---|
+| 1 | `tradingPairs` | Pair selector Autocomplete (index.tsx) | `mockAllTradingPairs` | `GET /api/v3/ticker/price` (~145KB) | **NOT** `/api/v3/exchangeInfo` — that's ~15MB, too heavy. `/ticker/price` returns all symbols with prices. Caveat: includes delisted pairs — requesting a delisted pair on other endpoints may return an error. Needs client-side filtering or validation. |
+| 2 | `depositInfo` | DepositTab asset/network Autocomplete, address display | `mockAllDepositInfo` | `GET /sapi/v1/capital/config/getall` → filter `depositAllEnable: true` | Returns all assets with their network configs. Extract deposit-enabled assets, then per-asset call `GET /sapi/v1/capital/deposit/address` for actual addresses. |
+| 3 | `withdrawInfo` | WithdrawTab asset/network Autocomplete, fee display | `mockAllWithdrawInfo` | `GET /sapi/v1/capital/config/getall` → filter `withdrawAllEnable: true` | Same endpoint as deposit — extract withdraw-enabled assets with network fees. |
+| 4 | `transferAssets` | TransferTab asset Autocomplete | `mockAllTransferAssets` | **TBD — needs investigation** | `/sapi/v1/asset/transfer` is POST (actual transfer action), not a query for available assets. Need to investigate which endpoint returns transfer-capable assets. Possibly derived from account balance endpoints or `GET /sapi/v1/asset/assetDetail`. |
+| 5 | `isolatedMarginPairs` | TransferTab isolated pair selector | `mockAllIsolatedMarginPairs` | `GET /sapi/v1/margin/isolated/allPairs` | Returns all available isolated margin pairs with base/quote info. |
+| 6 | `crossMarginPairs` | MarginTab pair Autocomplete | `mockAllCrossMarginPairs` | `GET /sapi/v1/margin/allPairs` | [Binance docs: Get All Cross Margin Pairs](https://developers.binance.com/docs/margin_trading/market-data/Get-All-Cross-Margin-Pairs) |
+| 7 | `pairInfo` | TransferTab asset filtering (base/quote lookup for isolated margin) | `mockAllPairInfo` | **TBD — needs investigation** | `/api/v3/exchangeInfo` has `baseAsset`/`quoteAsset` but is ~15MB. `/api/v3/ticker/price` doesn't include base/quote fields. Options to investigate: (a) parse from `/exchangeInfo` once and cache aggressively, (b) find a lighter endpoint, (c) derive from isolated margin pairs response which already contains base/quote. |
+
+**API endpoint investigation status:**
+- `tradingPairs`: Resolved — use `/api/v3/ticker/price`. Handle delisted pair caveat.
+- `depositInfo` / `withdrawInfo`: Resolved — use `/sapi/v1/capital/config/getall`.
+- `transferAssets`: **Unresolved** — no known endpoint that lists transfer-capable assets. Investigate further.
+- `isolatedMarginPairs`: Resolved — use `/sapi/v1/margin/isolated/allPairs`.
+- `crossMarginPairs`: Resolved — use `/sapi/v1/margin/allPairs`.
+- `pairInfo`: **Unresolved** — `/exchangeInfo` is too large, `/ticker/price` lacks base/quote. May be derivable from other responses.
+
+#### Metadata to pre-load per exchange (other widgets)
+
+| Widget | Data | API Source |
+|--------|------|-----------|
+| **OrderbookWidget** | Available pairs, depth config | `GET /api/v3/exchangeInfo` (shared with ExchangeWidget) |
+| **ArbitrageWidget** | Pairs available on each exchange | Same `exchangeInfo` per exchange |
+
+#### Caching strategy
+
+- **Per-exchange, per-data-type cache** — stored in Jotai atoms (or Tauri-side state). Key: `{exchangeId}:{dataType}`.
+- **TTL-based invalidation** — metadata like available assets/networks changes infrequently (hours/days). Use a long TTL (e.g., 30 min). Account balances use a shorter TTL or are refreshed via WebSocket events.
+- **Shared across widgets** — if ExchangeWidget already loaded Binance's `exchangeInfo`, OrderbookWidget reuses it from the cache instead of fetching again.
+- **Lazy per-exchange** — switching to a new exchange tab triggers a load only if that exchange isn't cached yet.
+
+#### Implementation sketch (Phase 2)
+
+```typescript
+// Already implemented in preload.ts — Jotai atoms with Map-based cache per exchangeId.
+// See src/components/widgets/ExchangeWidget/preload.ts for the actual implementation.
+//
+// Key design:
+// - metadataCache: Map<exchangeId, ExchangeMetadata> (module-level cache)
+// - Jotai atoms per exchangeId for reactive UI updates
+// - useExchangeMetadata(exchangeId) hook: triggers load on mount, returns { metadata, loading, progress }
+// - loadExchangeMetadata(): fetches all 7 items in parallel via Promise.all, reports { total, loaded }
+// - Phase 2: replace mock delays with Tauri invoke() calls (parallel execution preserved)
+```
+
+#### Phase 1 → Phase 2 migration path
+
+Steps 1–3 are **already implemented** in Phase 1 with mock data:
+
+1. ~~Create `ExchangeMetadata` type~~ → Done in `preload.ts`
+2. ~~Replace each hardcoded map with metadata from preload hook~~ → Done. All tabs accept `metadata` prop.
+3. ~~Add loading state check with progress UI~~ → Done. `index.tsx` shows loading bar while metadata loads.
+
+**Remaining for Phase 2:**
+
+4. Replace mock delays in `loadExchangeMetadata()` with Tauri `invoke()` calls to Rust backend
+5. Implement Rust handlers that call actual exchange APIs (with signing, rate limiting)
+6. Resolve **TBD endpoints**: `transferAssets` source, `pairInfo` lightweight alternative
+7. Handle delisted pairs from `/api/v3/ticker/price` (filter or validate)
+
 ---
 
 ## Phase 3+: Scale
@@ -1555,3 +1647,43 @@ The withdraw "To" auto-fill currently uses mock deposit addresses. In Phase 2, t
 - `HANDOFF.md` — Phase 2 API tracker, session log
 
 **Build & lint:** Build passes. Lint passes (0 errors, 5 warnings — pre-existing `react-refresh` warnings from exporting state types alongside components).
+
+### 2026-02-17: Pre-load layer implementation + API endpoint investigation
+
+**Goal:** Implement widget-scoped pre-load layer for exchange metadata, wire all tabs to use it, and document actual Binance API endpoints for Phase 2.
+
+**Changes made:**
+
+1. **Pre-load layer (`preload.ts`)** — New file. Defines `ExchangeMetadata` type (7 fields: `tradingPairs`, `depositInfo`, `withdrawInfo`, `transferAssets`, `isolatedMarginPairs`, `crossMarginPairs`, `pairInfo`). Jotai atom-based caching per exchangeId. `useExchangeMetadata(exchangeId)` hook triggers load on mount, returns `{ metadata, loading, progress }`. All 7 items fetched in **parallel** via `Promise.all` (Phase 2 ready — each mock delay becomes a Tauri invoke).
+
+2. **Loading UI (`index.tsx`)** — Added `LoadingView` component (progress bar + count, no item-by-item detail list). Added `WidgetBody` component rendered after metadata loads. `useExchangeMetadata` hook called per active exchange. Metadata passed to all tabs via `metadata` prop.
+
+3. **All tabs wired to preload metadata:**
+   - `DepositTab` — uses `metadata.depositInfo` (removed `mockDepositAddresses` import)
+   - `WithdrawTab` — uses `metadata.withdrawInfo` (removed hardcoded `networksByExchange`). Keeps `mockDepositAddresses` for cross-exchange "To" auto-fill (separate concern).
+   - `TransferTab` — uses `metadata.transferAssets` and `metadata.pairInfo` (removed `assetsByExchange`, `mockPairInfo` imports). Keeps `mockEnabledIsolatedPairs` (on-demand query, not metadata).
+   - `MarginTab` — uses `metadata.crossMarginPairs` (removed `pairsByExchange`). Keeps `mockPriceIndex` (live data).
+
+4. **Renamed `marginPairs` → `crossMarginPairs`** — Precise terminology matching [Binance docs](https://developers.binance.com/docs/margin_trading/market-data/Get-All-Cross-Margin-Pairs). Updated across `preload.ts`, `MarginTab.tsx`, `mockData.ts`.
+
+5. **mockData.ts — preload-shaped exports** — Added `mockAllTradingPairs`, `mockAllDepositInfo`, `mockAllWithdrawInfo`, `mockAllTransferAssets`, `mockAllIsolatedMarginPairs`, `mockAllCrossMarginPairs`, `mockAllPairInfo`. Each with Phase 2 comment noting the target API endpoint.
+
+6. **HANDOFF.md — API endpoint investigation** — Updated Pre-load metadata table with detailed Binance API analysis:
+   - `tradingPairs`: Use `GET /api/v3/ticker/price` (~145KB), NOT `/exchangeInfo` (~15MB). Caveat: includes delisted pairs.
+   - `depositInfo`/`withdrawInfo`: `GET /sapi/v1/capital/config/getall` — resolved.
+   - `transferAssets`: **TBD** — `/sapi/v1/asset/transfer` is POST (action), not a query.
+   - `isolatedMarginPairs`: `GET /sapi/v1/margin/isolated/allPairs` — resolved.
+   - `crossMarginPairs`: `GET /sapi/v1/margin/allPairs` — resolved.
+   - `pairInfo`: **TBD** — `/exchangeInfo` too large, `/ticker/price` lacks base/quote.
+
+**Files changed:**
+- `src/components/widgets/ExchangeWidget/preload.ts` — new, pre-load layer
+- `src/components/widgets/ExchangeWidget/mockData.ts` — preload-shaped exports, `marginPairs` → `crossMarginPairs`
+- `src/components/widgets/ExchangeWidget/index.tsx` — loading UI, metadata prop passing
+- `src/components/widgets/ExchangeWidget/tabs/DepositTab.tsx` — accepts `metadata` prop
+- `src/components/widgets/ExchangeWidget/tabs/WithdrawTab.tsx` — accepts `metadata` prop
+- `src/components/widgets/ExchangeWidget/tabs/TransferTab.tsx` — accepts `metadata` prop
+- `src/components/widgets/ExchangeWidget/tabs/MarginTab.tsx` — accepts `metadata` prop, `crossMarginPairs`
+- `HANDOFF.md` — API endpoint table, loading UX diagram, implementation sketch, migration path
+
+**Build & lint:** Both pass cleanly.

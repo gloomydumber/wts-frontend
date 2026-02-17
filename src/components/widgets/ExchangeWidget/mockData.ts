@@ -128,20 +128,48 @@ export const mockEnabledIsolatedPairs: Record<string, string[]> = {
   OKX: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
 }
 
-// --- Deposit address mock data ---
+/**
+ * Mock pair info: base/quote assets per symbol.
+ *
+ * Phase 2: This comes from the pre-load layer. Exchange APIs return base/quote as
+ * separate fields (e.g., Binance GET /api/v3/exchangeInfo → { baseAsset, quoteAsset }).
+ * No client-side symbol parsing is needed — the pre-load layer provides this map directly.
+ */
+export const mockPairInfo: Record<string, { base: string; quote: string }> = {
+  BTCUSDT: { base: 'BTC', quote: 'USDT' },
+  ETHUSDT: { base: 'ETH', quote: 'USDT' },
+  XRPUSDT: { base: 'XRP', quote: 'USDT' },
+  BNBUSDT: { base: 'BNB', quote: 'USDT' },
+  SOLUSDT: { base: 'SOL', quote: 'USDT' },
+  OKBUSDT: { base: 'OKB', quote: 'USDT' },
+  DOGEUSDT: { base: 'DOGE', quote: 'USDT' },
+}
+
+// ============================================================
+// Pre-load layer mock data
+//
+// These exports are consumed by preload.ts to populate ExchangeMetadata.
+// Phase 2: Each is replaced by a Tauri invoke() call to the Rust backend.
+// ============================================================
 
 /**
- * Mock deposit addresses per exchange.
- *
- * Phase 2: These will be fetched from each exchange's deposit address API endpoint
- * (e.g., Binance GET /sapi/v1/capital/deposit/address, Upbit POST /v1/deposits/generate_coin_address).
- * The mock data here is only for frontend PoC layout/UX validation.
- *
- * Used by:
- * - DepositTab: display deposit addresses for the current exchange
- * - WithdrawTab: auto-fill destination address when "To" exchange is selected
+ * Phase 2: GET /api/v3/exchangeInfo (Binance), or equivalent per exchange.
+ * Returns all available trading pairs.
  */
-export const mockDepositAddresses: Record<string, Record<string, Record<string, { address: string; memo?: string }>>> = {
+export const mockAllTradingPairs: Record<string, string[]> = {
+  Upbit: ['BTC/KRW', 'ETH/KRW', 'XRP/KRW', 'SOL/KRW', 'DOGE/KRW'],
+  Bithumb: ['BTC/KRW', 'ETH/KRW', 'XRP/KRW', 'EOS/KRW'],
+  Binance: ['BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'SOL/USDT', 'BNB/USDT'],
+  Bybit: ['BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'SOL/USDT'],
+  Coinbase: ['BTC/USD', 'ETH/USD', 'SOL/USD', 'XRP/USD'],
+  OKX: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'OKB/USDT'],
+}
+
+/**
+ * Phase 2: GET /sapi/v1/capital/config/getall (Binance), filter depositAllEnable.
+ * Deposit: asset → network → address info.
+ */
+export const mockAllDepositInfo: Record<string, Record<string, Record<string, { address: string; memo?: string }>>> = {
   Upbit: {
     BTC: { Bitcoin: { address: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa' } },
     ETH: { ERC20: { address: '0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18' } },
@@ -189,4 +217,103 @@ export const mockDepositAddresses: Record<string, Record<string, Record<string, 
       TRC20: { address: 'TFN4Jqt9RGFfp96LrZ2dUdFnWP9bJhGLkY' },
     },
   },
+}
+
+// Also keep the old name as alias for backward compat (DepositTab, WithdrawTab "To" auto-fill)
+export const mockDepositAddresses = mockAllDepositInfo
+
+/**
+ * Phase 2: GET /sapi/v1/capital/config/getall (Binance), filter withdrawAllEnable.
+ * Withdraw: asset → networks with fees.
+ */
+export const mockAllWithdrawInfo: Record<string, Record<string, { name: string; fee: string }[]>> = {
+  Upbit: {
+    BTC: [{ name: 'Bitcoin', fee: '0.0005 BTC' }],
+    ETH: [{ name: 'ERC20', fee: '0.01 ETH' }],
+    XRP: [{ name: 'Ripple', fee: '0.25 XRP' }],
+  },
+  Bithumb: {
+    BTC: [{ name: 'Bitcoin', fee: '0.001 BTC' }],
+    ETH: [{ name: 'ERC20', fee: '0.01 ETH' }],
+    XRP: [{ name: 'Ripple', fee: '1 XRP' }],
+  },
+  Binance: {
+    BTC: [{ name: 'Bitcoin', fee: '0.0005 BTC' }, { name: 'BEP20', fee: '0.0000005 BTC' }],
+    ETH: [{ name: 'ERC20', fee: '0.005 ETH' }, { name: 'Arbitrum One', fee: '0.0001 ETH' }, { name: 'BEP20', fee: '0.000005 ETH' }],
+    USDT: [{ name: 'ERC20', fee: '10 USDT' }, { name: 'TRC20', fee: '1 USDT' }, { name: 'BEP20', fee: '0.5 USDT' }],
+    XRP: [{ name: 'Ripple', fee: '0.25 XRP' }],
+    SOL: [{ name: 'Solana', fee: '0.01 SOL' }],
+  },
+  Bybit: {
+    BTC: [{ name: 'Bitcoin', fee: '0.0005 BTC' }],
+    ETH: [{ name: 'ERC20', fee: '0.005 ETH' }, { name: 'Arbitrum One', fee: '0.0001 ETH' }],
+    USDT: [{ name: 'ERC20', fee: '10 USDT' }, { name: 'TRC20', fee: '1 USDT' }],
+  },
+  Coinbase: {
+    BTC: [{ name: 'Bitcoin', fee: '0.0001 BTC' }],
+    ETH: [{ name: 'ERC20', fee: '0.005 ETH' }],
+  },
+  OKX: {
+    BTC: [{ name: 'Bitcoin', fee: '0.0005 BTC' }],
+    ETH: [{ name: 'ERC20', fee: '0.005 ETH' }, { name: 'Arbitrum One', fee: '0.0001 ETH' }],
+    USDT: [{ name: 'ERC20', fee: '10 USDT' }, { name: 'TRC20', fee: '0.8 USDT' }, { name: 'Polygon', fee: '0.5 USDT' }],
+  },
+}
+
+/**
+ * Phase 2: Derived from account info or exchangeInfo endpoint.
+ * Assets available for internal transfer per exchange.
+ */
+export const mockAllTransferAssets: Record<string, string[]> = {
+  Binance: ['BTC', 'ETH', 'USDT', 'BNB', 'SOL', 'XRP'],
+  Bybit: ['BTC', 'ETH', 'USDT', 'SOL', 'XRP'],
+  OKX: ['BTC', 'ETH', 'USDT', 'OKB', 'SOL'],
+}
+
+/**
+ * Phase 2: GET /sapi/v1/margin/isolated/allPairs (Binance) + GET /sapi/v1/margin/isolated/account.
+ * Returns isolated margin pairs with pre-parsed base/quote from the API.
+ */
+export const mockAllIsolatedMarginPairs: Record<string, { symbol: string; base: string; quote: string }[]> = {
+  Binance: [
+    { symbol: 'BTCUSDT', base: 'BTC', quote: 'USDT' },
+    { symbol: 'ETHUSDT', base: 'ETH', quote: 'USDT' },
+    { symbol: 'XRPUSDT', base: 'XRP', quote: 'USDT' },
+    { symbol: 'SOLUSDT', base: 'SOL', quote: 'USDT' },
+    { symbol: 'BNBUSDT', base: 'BNB', quote: 'USDT' },
+  ],
+  Bybit: [
+    { symbol: 'BTCUSDT', base: 'BTC', quote: 'USDT' },
+    { symbol: 'ETHUSDT', base: 'ETH', quote: 'USDT' },
+    { symbol: 'XRPUSDT', base: 'XRP', quote: 'USDT' },
+  ],
+  OKX: [
+    { symbol: 'BTCUSDT', base: 'BTC', quote: 'USDT' },
+    { symbol: 'ETHUSDT', base: 'ETH', quote: 'USDT' },
+    { symbol: 'SOLUSDT', base: 'SOL', quote: 'USDT' },
+  ],
+}
+
+/**
+ * Phase 2: GET /sapi/v1/margin/allPairs (Binance) — cross margin pairs.
+ * https://developers.binance.com/docs/margin_trading/market-data/Get-All-Cross-Margin-Pairs
+ */
+export const mockAllCrossMarginPairs: Record<string, string[]> = {
+  Binance: ['BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'BNB/USDT', 'SOL/USDT'],
+  Bybit: ['BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'SOL/USDT'],
+  OKX: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'OKB/USDT'],
+}
+
+/**
+ * Phase 2: Extracted from GET /api/v3/exchangeInfo response (baseAsset/quoteAsset fields).
+ * Symbol → base/quote lookup. Shared across all exchanges.
+ */
+export const mockAllPairInfo: Record<string, { base: string; quote: string }> = {
+  BTCUSDT: { base: 'BTC', quote: 'USDT' },
+  ETHUSDT: { base: 'ETH', quote: 'USDT' },
+  XRPUSDT: { base: 'XRP', quote: 'USDT' },
+  BNBUSDT: { base: 'BNB', quote: 'USDT' },
+  SOLUSDT: { base: 'SOL', quote: 'USDT' },
+  OKBUSDT: { base: 'OKB', quote: 'USDT' },
+  DOGEUSDT: { base: 'DOGE', quote: 'USDT' },
 }

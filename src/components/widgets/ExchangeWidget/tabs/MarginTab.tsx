@@ -1,5 +1,6 @@
-import { Box, TextField, Select, MenuItem, Button, Typography, ToggleButtonGroup, ToggleButton } from '@mui/material'
+import { Box, TextField, Autocomplete, Button, Typography, ToggleButtonGroup, ToggleButton } from '@mui/material'
 import type { ExchangeConfig } from '../types'
+import type { ExchangeMetadata } from '../preload'
 import { mockPriceIndex } from '../mockData'
 
 export interface MarginState {
@@ -16,12 +17,6 @@ export const DEFAULT_MARGIN_STATE: MarginState = {
   collateral: '',
 }
 
-const pairsByExchange: Record<string, string[]> = {
-  Binance: ['BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'BNB/USDT', 'SOL/USDT'],
-  Bybit: ['BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'SOL/USDT'],
-  OKX: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'OKB/USDT'],
-}
-
 /** Convert pair format "BTC/USDT" to symbol "BTCUSDT" for price index lookup */
 function pairToSymbol(pair: string): string {
   return pair.replace('/', '')
@@ -29,12 +24,13 @@ function pairToSymbol(pair: string): string {
 
 interface MarginTabProps {
   exchange: ExchangeConfig
+  metadata: ExchangeMetadata
   state: MarginState
   onChange: (update: Partial<MarginState>) => void
 }
 
-export default function MarginTab({ exchange, state, onChange }: MarginTabProps) {
-  const pairs = pairsByExchange[exchange.id] || ['BTC/USDT']
+export default function MarginTab({ metadata, state, onChange }: MarginTabProps) {
+  const pairs = metadata.crossMarginPairs.length > 0 ? metadata.crossMarginPairs : ['BTC/USDT']
   const action = state.action
   const pair = pairs.includes(state.pair) ? state.pair : pairs[0]
   const { amount, collateral } = state
@@ -83,9 +79,19 @@ export default function MarginTab({ exchange, state, onChange }: MarginTabProps)
         <ToggleButton value="repay" sx={{ fontSize: '0.6rem', py: 0.2 }}>Repay</ToggleButton>
       </ToggleButtonGroup>
 
-      <Select value={pair} onChange={(e) => onChange({ pair: e.target.value })} size="small" sx={{ fontSize: '0.7rem' }}>
-        {pairs.map((p) => <MenuItem key={p} value={p} sx={{ fontSize: '0.7rem' }}>{p}</MenuItem>)}
-      </Select>
+      <Autocomplete
+        value={pair}
+        onChange={(_, v) => { if (v) onChange({ pair: v }) }}
+        options={pairs}
+        size="small"
+        fullWidth
+        disableClearable
+        renderInput={(params) => (
+          <TextField {...params} variant="outlined" slotProps={{ htmlInput: { ...params.inputProps, style: { fontSize: '0.7rem' } } }} />
+        )}
+        slotProps={{ listbox: { sx: { fontSize: '0.7rem' } }, paper: { sx: { fontSize: '0.7rem' } } }}
+        sx={{ mb: 1 }}
+      />
 
       {/* Collateral input — only for borrow mode */}
       {action === 'borrow' && (
@@ -95,7 +101,7 @@ export default function MarginTab({ exchange, state, onChange }: MarginTabProps)
           onChange={(e) => onChange({ collateral: e.target.value })}
           size="small"
           fullWidth
-          sx={inputSx}
+          sx={{ ...inputSx, mb: 1 }}
         />
       )}
 
@@ -106,7 +112,7 @@ export default function MarginTab({ exchange, state, onChange }: MarginTabProps)
         onChange={(e) => onChange({ amount: e.target.value })}
         size="small"
         fullWidth
-        sx={inputSx}
+        sx={{ ...inputSx, mb: 1 }}
       />
 
       {/* Borrow mode buttons */}
