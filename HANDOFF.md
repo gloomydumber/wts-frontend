@@ -1771,3 +1771,12 @@ The withdraw "To" auto-fill currently uses mock deposit addresses. In Phase 2, t
 - `src/components/widgets/ExchangeWidget/tabs/OrderTab.tsx` — `pollInterval` field + input UI
 - `src/components/widgets/ExchangeWidget/tabs/BalanceTab.tsx` — KRW/USD per exchange
 - `HANDOFF.md` — API endpoint tables, sell-only polling strategy, session log
+
+**Commits:**
+- `72bdee4` — feat: preload layer, parallel metadata loading, API endpoint docs
+- `2eb7a79` — docs: resolve all preload API endpoints for Phase 2
+- `156b0a8` — feat: add poll interval input for sell-only mode
+- `34549ee` — feat: transfer UI reorder, balance KRW, max button fix
+- `ce5b359` — chore: update local settings
+
+**Build & lint:** Both pass cleanly.
