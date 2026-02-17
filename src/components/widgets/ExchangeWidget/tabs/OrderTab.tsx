@@ -18,6 +18,30 @@ export interface OrderState {
   quantity: string
   sellOnly: boolean
   loopActive: boolean
+  /**
+   * Polling interval in milliseconds for Sell-Only mode.
+   *
+   * Controls how frequently the sell order is retried/checked during arbitrage polling.
+   * Faster = better chance of capturing the spread before it closes.
+   *
+   * Phase 2 — Exchange-specific rate limit strategy:
+   * Each exchange has different rate limit policies. The optimal interval is the
+   * fastest polling rate that stays just under the rate limit ceiling:
+   *   - Binance: 1200 weight/min, order endpoints cost 1-2 weight → ~100ms safe
+   *   - Upbit: 10 req/sec → ~100ms safe
+   *   - Bybit: 10 req/sec for order endpoints → ~100ms safe
+   *   - OKX: 60 req/2sec for order endpoints → ~33ms safe
+   *   - Bithumb/Coinbase: investigate per-endpoint limits
+   *
+   * Phase 2 should:
+   * 1. Auto-calculate optimal interval per exchange from rate limit configs
+   * 2. Use this field as user override (if set, overrides auto-calculated value)
+   * 3. Implement adaptive backoff: on 429 response, temporarily increase interval
+   *    rather than failing, then gradually ramp back to optimal rate
+   * 4. Consider WebSocket order status updates where available (Binance userDataStream)
+   *    to reduce polling need — only poll for order placement, not status checks
+   */
+  pollInterval: string
 }
 
 export const DEFAULT_ORDER_STATE: OrderState = {
@@ -27,6 +51,7 @@ export const DEFAULT_ORDER_STATE: OrderState = {
   quantity: '0.01',
   sellOnly: false,
   loopActive: false,
+  pollInterval: '500',
 }
 
 /** Strip non-numeric chars (except dot) — allows pasting "100,000.50" */
@@ -173,6 +198,23 @@ export default function OrderTab({ exchange, pair, state, onChange }: OrderTabPr
             label={<Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.7)' }}>Sell-Only (polling)</Typography>}
             sx={{ m: 0 }}
           />
+          {/* Polling interval — shown when Sell-Only is checked */}
+          {sellOnly && (
+            <TextField
+              label="Poll Interval (ms)"
+              value={state.pollInterval}
+              onChange={(e) => onChange({ pollInterval: sanitizeNumber(e.target.value) })}
+              size="small"
+              fullWidth
+              disabled={loopActive}
+              sx={{
+                mt: 1.5,
+                '& .MuiInputBase-input': { fontSize: '0.75rem', py: '6px' },
+                '& .MuiInputLabel-root': { fontSize: '0.65rem' },
+              }}
+              slotProps={{ htmlInput: { inputMode: 'numeric' } }}
+            />
+          )}
         </Box>
       )}
 

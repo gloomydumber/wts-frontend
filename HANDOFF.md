@@ -674,11 +674,42 @@ Phase 1 uses mock data and placeholder formulas throughout the frontend. This ta
 | **WithdrawTab** — Submit | No-op button | Does nothing | Binance `POST /sapi/v1/capital/withdraw/apply`, Upbit `POST /v1/withdraws/coin`, etc. | `tabs/WithdrawTab.tsx` |
 | **OrderTab** — Submit | No-op button | Does nothing | Binance `POST /api/v3/order`, Upbit `POST /v1/orders`, etc. | `tabs/OrderTab.tsx` |
 | **OrderTab** — Balances in form | Not shown | No available balance display | Query from balance endpoints, show available balance for selected asset | `tabs/OrderTab.tsx` |
+| **OrderTab** — Sell-Only polling | `pollInterval` field, no actual polling | User sets interval in ms (default 500ms), button starts/cancels loop but no real polling occurs | Implement real polling loop: place sell order → check status → retry at `pollInterval` rate. See "Sell-Only Polling Strategy" section below. | `tabs/OrderTab.tsx` |
 
 **Pattern for replacement:** Each mock currently lives in either `mockData.ts` (shared data) or inline in the tab component (formulas/handlers). In Phase 2:
 1. Replace `mockData.ts` imports with Tauri `invoke()` calls in a data layer
 2. Replace placeholder formulas with real API responses
 3. Button handlers become `async` with loading states and error handling
+
+### Sell-Only Polling Strategy (Phase 2)
+
+The Sell-Only mode is designed for arbitrage: buy on exchange A, sell on exchange B as fast as possible. The polling interval (`pollInterval` in `OrderState`) controls retry frequency. Speed is critical — the spread decays fast.
+
+#### Exchange rate limits (Binance as reference)
+
+| Exchange | Rate Limit | Order Endpoint Cost | Safe Interval |
+|----------|-----------|-------------------|---------------|
+| Binance | 1200 weight/min | `POST /api/v3/order` = 1 weight, `GET /api/v3/order` = 4 weight | ~100ms |
+| Upbit | 10 req/sec | 1 req per call | ~100ms |
+| Bybit | 10 req/sec (order) | 1 req per call | ~100ms |
+| OKX | 60 req/2sec (order) | 1 req per call | ~33ms |
+| Bithumb | TBD | TBD | TBD |
+| Coinbase | TBD | TBD | TBD |
+
+#### Phase 2 implementation plan
+
+1. **Exchange rate limit config**: Define per-exchange rate limit parameters in a config file. Auto-calculate the optimal polling interval per exchange (fastest rate that stays under the ceiling).
+
+2. **User override**: The `pollInterval` field acts as a user override. If set, it overrides the auto-calculated value. This allows advanced users to tune the interval or be more conservative.
+
+3. **Adaptive backoff**: On HTTP 429 (rate limited) response:
+   - Immediately increase interval by 2x
+   - Gradually ramp back to optimal rate over ~10 successful requests
+   - Never exceed the rate limit ceiling — a 429 response is slower than polling slightly under the limit
+
+4. **WebSocket optimization**: Where available (Binance `userDataStream`, Bybit private WebSocket), subscribe to order status updates instead of polling for status. Only poll for order placement retries. This halves the API call count.
+
+5. **Rust-side polling**: The actual polling loop should run in the Rust backend (Tauri), not in the React frontend. Rust can maintain precise timing with `tokio::time::interval` and handle HTTP retries without JavaScript event loop jitter. The frontend only sends start/stop commands and receives status updates via Tauri events.
 
 ### Pre-load / Bootstrap Layer
 
