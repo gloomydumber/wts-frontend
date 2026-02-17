@@ -32,6 +32,14 @@ function formatCryptoAmount(value: number): string {
   return decPart ? `${grouped}.${decPart}` : grouped
 }
 
+/** Korean exchanges display values in KRW, others in USD */
+const KOREAN_EXCHANGES = new Set(['Upbit', 'Bithumb'])
+function getQuoteCurrency(exchangeId: string): { label: string; symbol: string } {
+  return KOREAN_EXCHANGES.has(exchangeId)
+    ? { label: 'KRW', symbol: '₩' }
+    : { label: 'USD', symbol: '$' }
+}
+
 /** Does this exchange have multiple wallet types with data? */
 function getAvailableWalletTabs(exchangeId: string): WalletType[] {
   const wallets = mockWalletBalances[exchangeId]
@@ -55,6 +63,7 @@ export default function BalanceTab({ exchange }: { exchange: ExchangeConfig }) {
   const wallets = mockWalletBalances[exchange.id]
   const balances: BalanceRow[] = wallets?.[activeTab] || []
   const total = balances.reduce((s, b) => s + b.usdValue, 0)
+  const currency = getQuoteCurrency(exchange.id)
 
   if (!wallets || Object.keys(wallets).length === 0) {
     return (
@@ -102,7 +111,7 @@ export default function BalanceTab({ exchange }: { exchange: ExchangeConfig }) {
               <TableCell align="right">Locked</TableCell>
               {margin && <TableCell align="right">Debt</TableCell>}
               {margin && <TableCell align="right">Interest</TableCell>}
-              <TableCell align="right">USD</TableCell>
+              <TableCell align="right">{currency.label}</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -147,7 +156,7 @@ export default function BalanceTab({ exchange }: { exchange: ExchangeConfig }) {
                     </TableCell>
                   )}
                   <TableCell align="right">
-                    ${row.usdValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    {currency.symbol}{row.usdValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </TableCell>
                 </TableRow>
               )
@@ -155,7 +164,7 @@ export default function BalanceTab({ exchange }: { exchange: ExchangeConfig }) {
             <TableRow>
               <TableCell colSpan={margin ? 5 : 3} sx={{ fontWeight: 700 }}>Total</TableCell>
               <TableCell align="right" sx={{ fontWeight: 700 }}>
-                ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                {currency.symbol}{total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </TableCell>
             </TableRow>
           </TableBody>

@@ -1,7 +1,8 @@
 import { Box, TextField, Select, MenuItem, Autocomplete, Button, Typography, Chip } from '@mui/material'
 import type { ExchangeConfig, TransferTarget } from '../types'
 import type { ExchangeMetadata } from '../preload'
-import { mockEnabledIsolatedPairs } from '../mockData'
+import { mockEnabledIsolatedPairs, mockWalletBalances } from '../mockData'
+import type { WalletType } from '../mockData'
 
 export interface TransferState {
   from: TransferTarget
@@ -28,17 +29,6 @@ const TRANSFER_LABELS: Record<TransferTarget, string> = {
   margin_cross: 'Margin (Cross)',
   margin_isolated: 'Margin (Isolated)',
   futures: 'Futures',
-}
-
-/** Mock max transferable values per asset */
-const mockMaxTransferable: Record<string, number> = {
-  BTC: 0.5423,
-  ETH: 4.2314,
-  USDT: 12450.1234,
-  BNB: 10.5,
-  SOL: 25.0012,
-  XRP: 5000.9876,
-  OKB: 100.1234,
 }
 
 interface TransferTabProps {
@@ -70,16 +60,55 @@ export default function TransferTab({ exchange, metadata, state, onChange }: Tra
     '& .MuiInputLabel-root': { fontSize: '0.75rem' },
   }
 
+  /**
+   * Max transferable logic:
+   *
+   * - FROM spot: use the free balance directly (full floating point precision).
+   * - FROM margin_isolated: for the specific pair's asset free balance.
+   * - FROM margin_cross / futures: use the free balance from that wallet type.
+   *
+   * Phase 2: When transferring FROM margin (cross or isolated) or futures TO spot,
+   * the actual max transferable amount must be fetched from:
+   *   - Binance: GET /sapi/v1/margin/maxTransferable?asset={asset}
+   *     (for isolated, add &isolatedSymbol={symbol})
+   *   - Bybit/OKX: equivalent endpoints
+   * The API considers margin level, outstanding debt, and risk parameters —
+   * the free balance alone is NOT sufficient for margin accounts.
+   * For spot → anywhere, free balance is accurate.
+   */
   const handleMaxClick = () => {
-    const maxVal = mockMaxTransferable[asset] ?? 1.0
-    onChange({ amount: maxVal.toString() })
+    const walletType = from as WalletType
+    const balances = mockWalletBalances[exchange.id]?.[walletType] || []
+
+    let maxVal: number | undefined
+    if (from === 'margin_isolated') {
+      // For isolated margin, find the balance matching both asset AND pair
+      const row = balances.find((b) => b.asset === safeAsset && b.isolatedPair === isolatedPair)
+      maxVal = row?.free
+    } else {
+      const row = balances.find((b) => b.asset === safeAsset)
+      maxVal = row?.free
+    }
+
+    onChange({ amount: maxVal !== undefined ? maxVal.toString() : '0' })
   }
 
+  /**
+   * Phase 2: Query enabled isolated margin pairs from exchange API.
+   *   - Binance: GET /sapi/v1/margin/isolated/account → returns currently enabled pairs
+   *   - The max number of enabled pairs comes from GET /sapi/v1/margin/isolated/accountLimit
+   *     which returns { enabledAccount: N, maxAccount: M }
+   *   - POST /sapi/v1/margin/isolated/account → enables a specific isolated margin pair
+   */
   const handleQueryPairs = () => {
     const pairs = mockEnabledIsolatedPairs[exchange.id] || ['BTCUSDT', 'ETHUSDT']
     onChange({ enabledIsolatedPairs: pairs })
   }
 
+  /**
+   * Phase 2: Enable isolated margin pair via POST /sapi/v1/margin/isolated/account
+   * Check against accountLimit.maxAccount before enabling.
+   */
   const handleEnablePair = () => {
     const sym = pairInput.trim().toUpperCase()
     if (!sym) return
@@ -111,22 +140,9 @@ export default function TransferTab({ exchange, metadata, state, onChange }: Tra
         </Box>
       </Box>
 
-      <Autocomplete
-        value={safeAsset}
-        onChange={(_, v) => { if (v) onChange({ asset: v }) }}
-        options={filteredAssets}
-        size="small"
-        fullWidth
-        disableClearable
-        renderInput={(params) => (
-          <TextField {...params} variant="outlined" slotProps={{ htmlInput: { ...params.inputProps, style: { fontSize: '0.7rem' } } }} />
-        )}
-        slotProps={{ listbox: { sx: { fontSize: '0.7rem' } }, paper: { sx: { fontSize: '0.7rem' } } }}
-      />
-
-      {/* Isolated pair selector — shown when margin_isolated is From or To */}
+      {/* When isolated margin is involved: Pair first, then Asset (user picks pair → asset filtered) */}
       {showIsolatedSection && (
-        <Box sx={{ mb: 1 }}>
+        <Box>
           <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>Isolated Pair</Typography>
           <Select
             value={isolatedPair}
@@ -141,6 +157,20 @@ export default function TransferTab({ exchange, metadata, state, onChange }: Tra
           </Select>
         </Box>
       )}
+
+      <Autocomplete
+        value={safeAsset}
+        onChange={(_, v) => { if (v) onChange({ asset: v }) }}
+        options={filteredAssets}
+        size="small"
+        fullWidth
+        disableClearable
+        renderInput={(params) => (
+          <TextField {...params} variant="outlined" slotProps={{ htmlInput: { ...params.inputProps, style: { fontSize: '0.7rem' } } }} />
+        )}
+        slotProps={{ listbox: { sx: { fontSize: '0.7rem' } }, paper: { sx: { fontSize: '0.7rem' } } }}
+        sx={{ mb: showIsolatedSection ? 1 : 0 }}
+      />
 
       {/* Amount + Max button */}
       <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'flex-end' }}>
@@ -217,6 +247,11 @@ export default function TransferTab({ exchange, metadata, state, onChange }: Tra
               Disable
             </Button>
           </Box>
+          {/*
+           * Phase 2: The "Max 10 pairs" limit is a placeholder. Use the actual limit from:
+           *   GET /sapi/v1/margin/isolated/accountLimit → { enabledAccount: N, maxAccount: M }
+           * Replace the hardcoded 10 with maxAccount from the API response.
+           */}
           <Typography sx={{ fontSize: '0.5rem', color: 'rgba(0,255,0,0.3)', mt: 0.5 }}>
             Max 10 pairs. {enabledIsolatedPairs.length}/10 enabled.
           </Typography>

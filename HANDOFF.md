@@ -665,9 +665,10 @@ Phase 1 uses mock data and placeholder formulas throughout the frontend. This ta
 | **MarginTab** — Calc Optimized | `collateral / 2 / priceIndex` | Legacy formula using `mockPriceIndex`, 50% collateral ratio. Collateral is user input, price index is mock. | Fetch real-time price from `GET /sapi/v1/margin/priceIndex` (Bybit/OKX equivalents), then apply client-side `/2` formula with live price. Collateral remains user input. | `tabs/MarginTab.tsx` |
 | **MarginTab** — Price Index | `mockPriceIndex` static map | Hardcoded prices (BTC=97250, etc.) | Binance `GET /sapi/v1/margin/priceIndex`, Bybit/OKX equivalents | `mockData.ts` |
 | **MarginTab** — Outstanding debt | Static text `"0.2500 + 0.0012 interest"` | Fake repay info | Query from margin account balance endpoint per exchange | `tabs/MarginTab.tsx` |
-| **TransferTab** — Max Transferable | `mockMaxTransferable` static map | Hardcoded per-asset values | Binance `GET /sapi/v1/margin/maxTransferable`, Bybit/OKX equivalents | `tabs/TransferTab.tsx` |
-| **TransferTab** — Query Enabled Pairs | `mockEnabledIsolatedPairs` | Returns static list per exchange | Binance `GET /sapi/v1/margin/isolated/allPairs` or account query | `tabs/TransferTab.tsx`, `mockData.ts` |
-| **TransferTab** — Enable/Disable Pair | Local state mutation only | Adds/removes from local array | Binance `POST /sapi/v1/margin/isolated/create` (enable), `DELETE /sapi/v1/margin/isolated/account` (disable) | `tabs/TransferTab.tsx` |
+| **TransferTab** — Max Transferable | `mockWalletBalances` free balance lookup | FROM spot: uses free balance (full precision). FROM margin/futures: also uses free balance (mock). | FROM spot: free balance is accurate. FROM margin (cross/isolated) or futures → spot: must use `GET /sapi/v1/margin/maxTransferable?asset={asset}` (add `&isolatedSymbol={symbol}` for isolated). API considers margin level, debt, risk params — free balance alone is NOT sufficient. | `tabs/TransferTab.tsx` |
+| **TransferTab** — Query Enabled Pairs | `mockEnabledIsolatedPairs` | Returns static list per exchange | `GET /sapi/v1/margin/isolated/account` → returns currently enabled pairs and balances | `tabs/TransferTab.tsx`, `mockData.ts` |
+| **TransferTab** — Isolated Pair Limit | Hardcoded max 10 | Static "Max 10 pairs" text | `GET /sapi/v1/margin/isolated/accountLimit` → `{ enabledAccount: N, maxAccount: M }`. Replace hardcoded 10 with `maxAccount` from response. | `tabs/TransferTab.tsx` |
+| **TransferTab** — Enable/Disable Pair | Local state mutation only | Adds/removes from local array | Enable: `POST /sapi/v1/margin/isolated/account` (creates isolated margin pair). Check against `accountLimit.maxAccount` before enabling. Disable: investigate endpoint (may require closing positions first). | `tabs/TransferTab.tsx` |
 | **BalanceTab** — All balances | `mockWalletBalances` | Static per-exchange, per-wallet-type data | Spot: `GET /api/v3/account`, Margin: `GET /sapi/v1/margin/isolated/account`, Cross: `GET /sapi/v1/margin/account`, Futures: futures account endpoint | `mockData.ts` |
 | **DepositTab** — Deposit addresses | `mockDepositAddresses` | Static addresses per exchange/asset/network | Binance `GET /sapi/v1/capital/deposit/address`, Upbit `POST /v1/deposits/generate_coin_address`, etc. | `mockData.ts` |
 | **WithdrawTab** — "To" auto-fill | Uses `mockDepositAddresses` of destination exchange | Static lookup | Fetch deposit address from destination exchange API on demand | `tabs/WithdrawTab.tsx` |
@@ -1729,3 +1730,44 @@ The withdraw "To" auto-fill currently uses mock deposit addresses. In Phase 2, t
 - `HANDOFF.md` — API endpoint table, loading UX diagram, implementation sketch, migration path
 
 **Build & lint:** Both pass cleanly.
+
+**Further in session:**
+
+7. **All preload API endpoints resolved** — Investigated actual Binance API endpoints for the two remaining TBD fields:
+   - `transferAssets`: No dedicated endpoint. Derive from `GET /sapi/v1/capital/config/getall` (filter `trading: true`) — same call already used for deposit/withdraw, so no extra request.
+   - `pairInfo`: Derive from isolated + cross margin pair responses (both return `base`/`quote` fields) — no extra request. Fallback: `/api/v3/exchangeInfo?symbols=[...]` for non-margin pairs.
+   - Result: only **4 actual HTTP requests** per exchange populate all 7 metadata fields. Documented in HANDOFF.md with effective API call table.
+
+8. **Sell-Only poll interval input (`OrderTab.tsx`)** — Added `pollInterval` field to `OrderState` (default 500ms). Shows a "Poll Interval (ms)" input when Sell-Only checkbox is checked, disabled during active loop. Detailed Phase 2 comments in code covering:
+   - Per-exchange rate limit reference (Binance ~100ms, Upbit ~100ms, OKX ~33ms)
+   - Auto-calculate optimal interval from rate limit configs
+   - User override via the input field
+   - Adaptive backoff on 429 responses
+   - WebSocket optimization to reduce polling
+   - Rust-side polling via `tokio::time::interval` for precision
+
+9. **HANDOFF.md — Sell-Only Polling Strategy section** — Added under Phase 2 with exchange rate limit table, 5-point implementation plan (rate limit config, user override, adaptive backoff, WebSocket, Rust-side loop).
+
+10. **TransferTab — UI order + Max button + isolated pair endpoints:**
+    - **Reordered UI for isolated margin**: When `margin_isolated` is selected, Isolated Pair selector now appears BEFORE Asset selector (user picks pair first → asset filtered to base/quote). Previously Asset came first which was unintuitive.
+    - **Max button uses actual balance data**: Removed `mockMaxTransferable` (truncated values like `12450.1234`). Now looks up `mockWalletBalances` with full floating point precision (e.g., `12450.12345678`). For `margin_isolated`, matches both asset AND isolatedPair.
+    - **Phase 2 comments on Max button**: FROM spot → free balance is accurate. FROM margin/futures → must use `GET /sapi/v1/margin/maxTransferable?asset={asset}` (add `&isolatedSymbol` for isolated). Free balance alone is NOT sufficient for margin accounts.
+    - **Isolated margin pair API endpoints documented**: `GET /sapi/v1/margin/isolated/accountLimit` → `{ enabledAccount, maxAccount }`, `GET /sapi/v1/margin/isolated/account` → query enabled pairs, `POST /sapi/v1/margin/isolated/account` → enable pair. Comments in code + HANDOFF.md Phase 2 tracker row.
+    - **Spacing fix**: Added `mb: 1` between Asset Autocomplete and Amount input when isolated section is shown.
+
+11. **BalanceTab — KRW for Korean exchanges:**
+    - Column header shows "KRW" for Upbit/Bithumb, "USD" for others.
+    - Value prefix: `₩` for Korean exchanges, `$` for others.
+    - Updated mock data: Upbit/Bithumb `usdValue` fields now contain KRW-denominated values (mock rate ~1,400 KRW/USD). E.g., KRW free balance `2,534,821` displays as `₩2,534,821.00`, not `$1,810.59`.
+
+**All files changed in this session:**
+- `src/components/widgets/ExchangeWidget/preload.ts` — new, pre-load layer with parallel fetching
+- `src/components/widgets/ExchangeWidget/mockData.ts` — preload-shaped exports, `marginPairs` → `crossMarginPairs`, KRW values for Korean exchanges
+- `src/components/widgets/ExchangeWidget/index.tsx` — loading UI, metadata prop passing
+- `src/components/widgets/ExchangeWidget/tabs/DepositTab.tsx` — accepts `metadata` prop
+- `src/components/widgets/ExchangeWidget/tabs/WithdrawTab.tsx` — accepts `metadata` prop
+- `src/components/widgets/ExchangeWidget/tabs/TransferTab.tsx` — accepts `metadata` prop, reordered UI, Max uses balance data, Phase 2 comments
+- `src/components/widgets/ExchangeWidget/tabs/MarginTab.tsx` — accepts `metadata` prop, `crossMarginPairs`
+- `src/components/widgets/ExchangeWidget/tabs/OrderTab.tsx` — `pollInterval` field + input UI
+- `src/components/widgets/ExchangeWidget/tabs/BalanceTab.tsx` — KRW/USD per exchange
+- `HANDOFF.md` — API endpoint tables, sell-only polling strategy, session log

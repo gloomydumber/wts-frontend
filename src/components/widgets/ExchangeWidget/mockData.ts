@@ -20,19 +20,20 @@ export type WalletType = 'spot' | 'margin_isolated' | 'margin_cross' | 'futures'
  * Exchanges without margin/futures only have 'spot'.
  */
 export const mockWalletBalances: Record<string, Partial<Record<WalletType, BalanceRow[]>>> = {
+  // Korean exchanges: fiatValue is in KRW (mock rate ~1,400 KRW/USD)
   Upbit: {
     spot: [
-      { asset: 'BTC', free: 0.10234567, locked: 0, usdValue: 9953.22 },
-      { asset: 'ETH', free: 2.00891234, locked: 0.50123, usdValue: 8556.43 },
-      { asset: 'XRP', free: 10234.56789, locked: 0, usdValue: 24870.09 },
-      { asset: 'KRW', free: 2534821, locked: 0, usdValue: 1810.59 },
+      { asset: 'BTC', free: 0.10234567, locked: 0, usdValue: 13934508 },
+      { asset: 'ETH', free: 2.00891234, locked: 0.50123, usdValue: 11979002 },
+      { asset: 'XRP', free: 10234.56789, locked: 0, usdValue: 34818126 },
+      { asset: 'KRW', free: 2534821, locked: 0, usdValue: 2534821 },
     ],
   },
   Bithumb: {
     spot: [
-      { asset: 'BTC', free: 0.05012345, locked: 0, usdValue: 4874.51 },
-      { asset: 'ETH', free: 1.50987654, locked: 0, usdValue: 5152.88 },
-      { asset: 'XRP', free: 3012.345678, locked: 0, usdValue: 7320.0 },
+      { asset: 'BTC', free: 0.05012345, locked: 0, usdValue: 6824314 },
+      { asset: 'ETH', free: 1.50987654, locked: 0, usdValue: 7214032 },
+      { asset: 'XRP', free: 3012.345678, locked: 0, usdValue: 10248000 },
     ],
   },
   Binance: {
