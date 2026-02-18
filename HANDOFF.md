@@ -1780,3 +1780,250 @@ The withdraw "To" auto-fill currently uses mock deposit addresses. In Phase 2, t
 - `ce5b359` — chore: update local settings
 
 **Build & lint:** Both pass cleanly.
+
+---
+
+## Session: 2026-02-17 — DEX Widget Implementation
+
+### What Was Done
+
+Implemented the **DEX mega-widget** — a single widget handling all decentralized exchange operations: wallet management, token balances, swaps via aggregators, perpetual trading, batch transfers (disperse), and a Phase 2 DApp browser placeholder.
+
+### Architecture
+
+- **Single widget** (`DexWidget/`) with chain tabs (Ethereum, Arbitrum, Base, BSC, Polygon, Optimism, Solana)
+- **2-column layout**: left = BalanceTab (always visible, flex 3), right = tabbed operations (flex 7)
+- **Per-chain state maps** in `index.tsx` — same pattern as ExchangeWidget
+- **Real HD wallet generation**: BIP-39 mnemonic, BIP-32 derivation, AES-256-GCM encryption via Web Crypto
+- **Chain metadata preload** with Jotai atoms per chain, parallel loading, progress tracking
+- Replaces old `WalletWidget/` and `SwapWidget/` (both deleted)
+
+### Files Created (12)
+
+| File | Purpose |
+|------|---------|
+| `src/components/widgets/DexWidget/types.ts` | ChainConfig, CHAINS array, all type definitions, default states |
+| `src/components/widgets/DexWidget/mockData.ts` | Token lists, balances, swap routes, perp data, gas prices per chain |
+| `src/components/widgets/DexWidget/walletManager.ts` | HD wallet: mnemonic gen, BIP-32 derivation, AES-256-GCM encrypt/decrypt |
+| `src/components/widgets/DexWidget/preload.ts` | Jotai atoms per chain, parallel metadata loading with progress |
+| `src/components/widgets/DexWidget/index.tsx` | Widget shell: chain tabs, wallet bar, per-chain state maps, create/import/unlock flow |
+| `src/components/widgets/DexWidget/settingsDialog.tsx` | Modal: RPC endpoints, slippage, gas priority, wallet export, account management |
+| `src/components/widgets/DexWidget/tabs/BalanceTab.tsx` | Token balance table with total, add custom token dialog |
+| `src/components/widgets/DexWidget/tabs/SwapTab.tsx` | Aggregator route comparison, path visualization, price impact warnings |
+| `src/components/widgets/DexWidget/tabs/PerpsTab.tsx` | Protocol selector, leverage slider, positions table, funding rates |
+| `src/components/widgets/DexWidget/tabs/DisperseTab.tsx` | Multi-recipient batch transfer, CSV import, summary |
+| `src/components/widgets/DexWidget/tabs/TransferTab.tsx` | Simple single send with gas estimate |
+| `src/components/widgets/DexWidget/tabs/BrowserTab.tsx` | Phase 2 placeholder |
+
+### Files Modified (3)
+
+| File | Change |
+|------|--------|
+| `src/components/widgets/index.ts` | Removed Wallet/Swap imports, added `Dex: DexWidget` |
+| `src/layout/defaults.ts` | Removed Wallet/Swap from WIDGET_REGISTRY, added `{ id: 'Dex', label: 'DEX', defaultVisible: false }` |
+| `src/store/atoms.ts` | Added `dexWalletAtom`, `dexSettingsAtom`, `walletLockedAtom` |
+
+### Files Deleted (2)
+
+| File | Reason |
+|------|--------|
+| `src/components/widgets/WalletWidget/` | Replaced by DexWidget BalanceTab + wallet management |
+| `src/components/widgets/SwapWidget/` | Replaced by DexWidget SwapTab |
+
+### Dependencies Added
+
+| Package | Purpose |
+|---------|---------|
+| `@scure/bip39` | BIP-39 mnemonic generation/validation |
+| `@scure/bip32` | BIP-32 HD key derivation |
+| `viem` | EVM address derivation from private key |
+| `@solana/web3.js` | Solana keypair from seed |
+| `bs58` | Base58 encoding for Solana addresses |
+
+### Wallet Security (Phase 1)
+
+- AES-256-GCM via Web Crypto API
+- PBKDF2 key derivation (100k iterations, random salt)
+- Encrypted blob in localStorage as `{ salt, iv, ciphertext }` (base64)
+- Private keys derived on-demand from mnemonic, never persisted
+- Locked on page refresh (walletLockedAtom not persisted)
+- Warning banner: "Development tool — do not use with significant funds"
+
+### Phase 2 Migration Notes
+
+- Encrypted blob moves to `tauri-plugin-store`
+- Signing moves to Rust (`aes-gcm` crate, `k256`/`ed25519-dalek`)
+- Private keys never touch JS
+- Mock swap routes replaced by real aggregator APIs (LI.FI, Jupiter, 0x)
+- Mock balances replaced by RPC calls via viem/Solana
+- DApp browser tab uses Tauri WebView + provider injection
+
+### Korean Convention
+
+- Perps: Long = red (#ff0000), Short = blue (#0000ff/#4444ff)
+
+**Build & lint:** Both pass (0 errors, warnings only from pre-existing ExchangeWidget + 1 intentional useMemo dep).
+
+## Session: 2026-02-18 — DEX Widget UX Refinements & Security Refactor
+
+### What Was Done
+
+1. **Removed wallet locking** — CEX widget has no lock, DEX shouldn't either
+2. **Removed redundant address display** in WalletBar — replaced with copy icon button
+3. **Added per-account private key export** (`derivePrivateKeys()` in walletManager.ts)
+4. **Added `SensitiveText` component** — blur(4px) by default, click to reveal, click again to copy
+5. **Removed all password/encryption flow** — security will be a unified layer later (handles both CEX API keys and DEX private keys)
+6. **Added `dexMnemonicAtom`** — plain text mnemonic in localStorage (no encryption for Phase 1)
+7. **Added '+' button in WalletBar** — instant account creation, auto-selects new account
+8. **Added account hide/restore** in settings — `excludedIndices` on WalletState, hidden accounts show in greyed section with Restore button
+9. **Fixed settings dialog layout** — accounts list has fixed `maxHeight: 240` with scroll, buttons stay in place, mnemonic renders below buttons
+
+### Security Approach Change
+
+**Old:** Per-action password prompts, AES-256-GCM encryption of mnemonic in localStorage.
+**New:** Plain text mnemonic in `dexMnemonicAtom` (localStorage). No password prompts. All sensitive operations (export, add account) are instant.
+**Rationale:** Password-per-action is wrong UX. Security should be a unified vault layer (Phase 2) handling all secrets: CEX API keys, DEX private keys, mnemonics. The encryption functions remain in `walletManager.ts` for future use.
+
+### Migration Note
+
+If a wallet was created under the old encryption system, the app detects the mismatch (`walletState.initialized && !mnemonic`) and shows the wallet setup prompt to re-create or re-import.
+
+### BIP-39/BIP-32 Multi-Chain Compatibility
+
+The same 12-word BIP-39 mnemonic works for virtually all chains. What differs per chain:
+- **Derivation path**: BIP-44 coin type `m/44'/<coin>'/...`
+- **Elliptic curve**: secp256k1 vs Ed25519 vs sr25519
+- **Address encoding**: hex, bech32, base58, base58check, etc.
+
+| Chain | Coin Type | Curve | Address Format | Compatible? |
+|-------|-----------|-------|----------------|-------------|
+| **EVM** (ETH, ARB, BSC, Base, OP, Polygon) | `60'` | secp256k1 | 0x hex | Currently implemented |
+| **Solana** | `501'` | Ed25519 | base58 | Currently implemented |
+| **Cosmos/ATOM** | `118'` | secp256k1 | bech32 (`cosmos1...`) | Yes — same key as EVM, different address encoding |
+| **Tron** | `195'` | secp256k1 | base58check (`T...`) | Yes — same key type as EVM |
+| **Bitcoin** | `0'` / `84'` | secp256k1 | bech32 / base58check | Yes |
+| **Aptos** | `637'` | Ed25519 | hex `0x...` | Yes — same curve as Solana |
+| **Sui** | `784'` | Ed25519 | hex `0x...` | Yes |
+| **Near** | `397'` | Ed25519 | human-readable | Yes |
+| **Polkadot/Substrate** | `354'` | **sr25519** | SS58 | **No** — sr25519 is not standard BIP-32, needs separate lib |
+| **Ton** | `607'` | Ed25519 | custom | Mostly — address derivation is non-standard |
+
+**How one mnemonic covers all chains:** The 12-word mnemonic is just entropy — a big random number encoded as words. It's not tied to any chain or curve. The same seed derives independent key pairs for every chain simultaneously:
+
+```
+"abandon ability able ... zone" (12 words)
+        │
+        ▼
+   512-bit seed (via PBKDF2)
+        │
+        ├── m/44'/60'/0'/0/0  → secp256k1 → 0x742d...  (EVM)
+        ├── m/44'/501'/0'/0'  → Ed25519   → 7Xfb...    (Solana)
+        └── m/44'/354'/0'/0'  → sr25519   → 5GrwV...   (Polkadot)
+```
+
+One mnemonic = one backup for every chain. Different derivation paths and curves produce mathematically independent key pairs, all traceable back to the same 12 words. This is how MetaMask, Phantom, Trust Wallet all work — import the same mnemonic and each wallet derives the correct addresses for its supported chains. Even Polkadot (sr25519) uses the same mnemonic, it just needs a different derivation library (`@polkadot/util-crypto`).
+
+**To add a new chain:** add derivation path + address encoder to `deriveAccounts()`, add field to `WalletAccount` type (e.g., `cosmosAddress`, `tronAddress`). No user choice needed — one account index derives addresses for all chains at once. Our `@scure/bip32` covers ~95% of chains. Only Polkadot/Substrate (sr25519) needs a separate library.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `types.ts` | Added `excludedIndices: number[]` to `WalletState` |
+| `walletManager.ts` | Added `derivePrivateKeys()` returning EVM hex + Solana base58 private keys |
+| `atoms.ts` | Added `dexMnemonicAtom` (plain text), updated `dexWalletAtom` default with `excludedIndices` |
+| `index.tsx` | Removed password flow, added `dexMnemonicAtom` usage, '+' button in WalletBar (instant), migration detection, auto-select new account |
+| `settingsDialog.tsx` | Removed password field, added `SensitiveText` blur component, account hide/restore, per-account key export, mnemonic toggle |
+
+**Build:** Passes (0 errors).
+
+---
+
+## Session: Multi-Wallet Support (2026-02-18)
+
+### What Was Done
+
+Implemented multi-wallet support for the DEX widget. Users can now manage multiple HD wallets (e.g., personal, trading, testing) within the same DEX widget, each with its own mnemonic, accounts, and per-wallet chain tab state.
+
+### Data Model Changes
+
+**New types (`types.ts`):**
+- `DexWallet` — represents a single wallet: `id`, `label`, `mnemonic`, `accounts`, `activeAccountIndex`, `excludedIndices`
+- `DexWalletsState` — top-level state: `wallets: DexWallet[]`, `activeWalletId: string`
+- Existing `WalletState` and `WalletAccount` unchanged (still used by all child tab components)
+
+**Atom changes (`atoms.ts`):**
+- Removed `dexWalletAtom` (single `WalletState`) and `dexMnemonicAtom` (single string)
+- Added `dexWalletsAtom` — `atomWithStorage<DexWalletsState>('dexWallets', ...)`
+- Migration logic: on first load, if old `dexWallet` + `dexMnemonic` localStorage keys exist, auto-converts to new multi-wallet format, then removes old keys
+
+### UI Changes
+
+**Wallet tabs row** (new, above chain tabs):
+```
+[Wallet 1] [Trading] [+]                                    [settings]
+[Ethereum] [Arbitrum] [Base] [BSC] [Polygon] [OP] [Solana]
+ Account: [Account 1 (0x742d...2bD18) v]  [copy] [+]
+```
+
+- Each tab = one mnemonic/wallet, showing `wallet.label`
+- `[+]` button at end: opens create/import flow inline to add a new wallet
+- Double-click tab label: inline rename via text field
+- Right-click tab: context menu with Rename / Delete options
+- Delete shows inline confirmation banner before removing
+- Wallet tabs are scrollable if many wallets
+
+**Per-wallet chain tab state:**
+- Each wallet remembers its own selected chain tab independently
+- Switching wallets restores the chain that was last active for that wallet
+- Implemented via `chainIdxMap: Record<walletId, number>` state
+
+**WalletBar label** changed from "Wallet:" to "Account:" for clarity (since "wallet" now refers to the top-level tab).
+
+**No-wallet state:**
+- `wallets.length === 0`: full-widget prompt with Create/Import (same as before)
+- Adding via `[+]` tab: shows create/import choice inline, then setup form
+
+**Settings dialog (`settingsDialog.tsx`):**
+- Uses `dexWalletsAtom`, derives active wallet
+- Wallet tab shows active wallet's label, accounts, export key, mnemonic
+- Handles "no wallet" state with message
+
+### Architecture Notes
+
+- Child tab components (BalanceTab, SwapTab, PerpsTab, DisperseTab, TransferTab, BrowserTab) receive the same `WalletState` type as before — **zero changes needed** to any tab component
+- `walletManager.ts` — **no changes needed**, all functions already take `mnemonic` as a parameter
+- `updateActiveWallet` helper in `index.tsx` simplifies updating the active wallet's state within the wallets array
+- Active wallet derived via: `walletsState.wallets.find(w => w.id === walletsState.activeWalletId)`
+- `WalletState` for child components derived from active `DexWallet` fields
+
+### Perps Tab Slider Fix
+
+Fixed MUI Slider overflow issues in `PerpsTab.tsx`:
+- Slider thumb (12x12) at min/max positions caused horizontal overflow → added `px: 1` + `overflowX: 'hidden'` wrapper around Slider
+- Reduced focus ring/ripple effect size: custom `boxShadow` for `:hover`, `.Mui-focusVisible`, `.Mui-active` states; `&::after` hit area reduced to 20x20
+- Slider wrapper has `py: 0.25` for compact vertical spacing
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `types.ts` | Added `DexWallet`, `DexWalletsState` interfaces |
+| `atoms.ts` | Replaced `dexWalletAtom` + `dexMnemonicAtom` with `dexWalletsAtom`; added migration from old localStorage keys |
+| `index.tsx` | Wallet tabs row, per-wallet chain state (`chainIdxMap`), wallet rename/delete/add flows, `updateActiveWallet` helper, derived `WalletState` from active wallet |
+| `settingsDialog.tsx` | Uses `dexWalletsAtom`, derives active wallet, shows wallet label, handles no-wallet state |
+| `tabs/PerpsTab.tsx` | Fixed Slider thumb overflow (horizontal scroll), reduced focus ring size, compact wrapper padding |
+
+### Migration
+
+Automatic on first load:
+1. Checks for old `dexWallet` + `dexMnemonic` in localStorage
+2. If found: creates a `DexWallet` with label "Wallet 1", stores as `dexWallets`, removes old keys
+3. If not found: starts fresh with empty wallets array
+
+### Performance Notes
+
+- Per-wallet state maps (`chainIdxMap`, `dexTabs`, `swapStates`, etc.) are plain `useState` objects — same pattern as before, acceptable for Phase 1
+- `updateActiveWallet` does a `.map()` over the wallets array on each update — O(n) but n = number of wallets (single digits), negligible
+
+**Build:** Passes (0 errors, 0 new lint warnings).

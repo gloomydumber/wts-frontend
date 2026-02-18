@@ -6,8 +6,7 @@ import OrderbookWidget from './OrderbookWidget'
 import ArbitrageWidget from './ArbitrageWidget'
 import ChartWidget from './ChartWidget'
 import ExchangeCalcWidget from './ExchangeCalcWidget'
-import WalletWidget from './WalletWidget'
-import SwapWidget from './SwapWidget'
+import DexWidget from './DexWidget'
 import MemoWidget from './MemoWidget'
 import ShortcutWidget from './ShortcutWidget'
 
@@ -19,8 +18,7 @@ export const widgetComponents: Record<string, ComponentType> = {
   Arbitrage: ArbitrageWidget,
   Chart: ChartWidget,
   ExchangeCalc: ExchangeCalcWidget,
-  Wallet: WalletWidget,
-  Swap: SwapWidget,
+  Dex: DexWidget,
   Memo: MemoWidget,
   Shortcut: ShortcutWidget,
 }

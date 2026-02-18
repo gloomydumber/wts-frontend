@@ -8,8 +8,7 @@ export const WIDGET_REGISTRY: WidgetConfig[] = [
   { id: 'Arbitrage', label: 'Arbitrage', defaultVisible: true },
   { id: 'Chart', label: 'Chart', defaultVisible: false },
   { id: 'ExchangeCalc', label: 'Exchange Calculator', defaultVisible: false },
-  { id: 'Wallet', label: 'Wallet', defaultVisible: false },
-  { id: 'Swap', label: 'Swap', defaultVisible: false },
+  { id: 'Dex', label: 'DEX', defaultVisible: false },
   { id: 'Memo', label: 'Memo', defaultVisible: false },
   { id: 'Shortcut', label: 'Shortcut', defaultVisible: false },
 ]
