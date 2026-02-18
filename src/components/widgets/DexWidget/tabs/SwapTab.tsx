@@ -188,7 +188,7 @@ export default function SwapTab({ chain, metadata, walletState, state, onChange 
             <Box sx={{ p: 0.75, bgcolor: 'rgba(0,255,0,0.04)', borderRadius: '2px', border: '1px solid rgba(0,255,0,0.06)' }}>
               <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', mb: 0.25 }}>Route Path</Typography>
               <Typography sx={{ fontSize: '0.6rem', color: '#00ff00' }}>
-                {tokenInInfo?.symbol ?? state.tokenIn} {selectedRoute.path.length > 2 ? `\u2192 ${selectedRoute.path.slice(1, -1).join(' \u2192 ')} ` : ''}\u2192 {tokenOutInfo?.symbol ?? state.tokenOut}
+                {tokenInInfo?.symbol ?? state.tokenIn} {selectedRoute.path.length > 2 ? `\u2192 ${selectedRoute.path.slice(1, -1).join(' \u2192 ')} ` : ''}{'\u2192'} {tokenOutInfo?.symbol ?? state.tokenOut}
                 {' '}({selectedRoute.protocols.join(', ')})
               </Typography>
               <Typography sx={{ fontSize: '0.5rem', color: 'rgba(0,255,0,0.3)', mt: 0.25 }}>
