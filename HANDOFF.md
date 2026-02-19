@@ -2034,6 +2034,40 @@ Automatic on first load:
 
 All pushed to `origin/master`.
 
+## Session: 2026-02-19 — PremiumTable Performance Refactor (0.3.1)
+
+### What Was Done
+
+Updated `@gloomydumber/premium-table` from 0.2.0 to 0.3.1 for comprehensive performance improvements. Also fixed OKX brand color to `#87CEEB` in wts-frontend's `EXCHANGE_COLORS`.
+
+All performance work was done in `../premium-table-refactored` and published via CI/CD. Key improvements:
+- Eliminated Emotion style leak (dynamic `sx={}` → `style={}` on per-row cells)
+- Replaced MUI SvgIcon components with Unicode spans + CSS classes in hot path
+- Replaced per-row flash `useState` with ref-based DOM manipulation (400 fewer re-renders/frame)
+- Single-copy batch flush in marketData.ts (O(1) instead of O(n) copies)
+- Hoisted static sx to module-level constants in table header
+- Moved @fontsource imports out of library (saves ~400KB in published CSS)
+- Compact CEX pair dropdown with abbreviated names (UP–BN) for small widget sizes
+
+Also integrated `setUpdatesPaused` from the library into `GridLayout.tsx` — pauses PremiumTable RAF flushes during drag/drop and resize so the grid has the main thread to itself. On interaction stop, one catch-up flush applies all accumulated WS changes in a single batch.
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `package.json` | `@gloomydumber/premium-table` `^0.2.0` → `^0.3.1` |
+| `src/types/exchange.ts` | OKX color `#87CEEB` (unchanged, was already correct) |
+| `src/layout/GridLayout.tsx` | Added `setUpdatesPaused` import + `onDragStart`/`onDragStop`/`onResizeStart`/`onResizeStop` handlers |
+| `HANDOFF.md` | Session log entry |
+
+### Notes
+
+- The `@gloomydumber/premium-table/style.css` import is still needed — it now contains `.pt-icon`, `.pt-show-on-hover`, and `.pt-scroller` CSS classes (was previously ~400KB font data, now 0.55KB)
+- wts-frontend already loads JetBrains Mono via its own `@fontsource/jetbrains-mono` dependency
+- `setUpdatesPaused(true)` freezes React state updates from PremiumTable WS data; WS messages still write to module-level Maps (zero overhead). `setUpdatesPaused(false)` triggers a single catch-up flush.
+
+---
+
 ## Session: 2026-02-19 — Replace ArbitrageWidget with PremiumTable Package
 
 ### What Was Done

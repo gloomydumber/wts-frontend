@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { WidthProvider, Responsive, type Layout, type Layouts } from 'react-grid-layout'
 import { useAtom, useSetAtom } from 'jotai'
 import { debounce } from 'lodash'
+import { setUpdatesPaused } from '@gloomydumber/premium-table'
 
 import { layoutsAtom, currentBreakpointAtom, widgetVisibilityAtom } from '../store/atoms'
 import {
@@ -79,12 +80,19 @@ export default function GridLayout() {
 
   const currentLayout = visibleLayouts[breakpoint] || []
 
+  const handleInteractionStart = useCallback(() => setUpdatesPaused(true), [])
+  const handleInteractionStop = useCallback(() => setUpdatesPaused(false), [])
+
   return (
     <ResponsiveGridLayout
       className="layout grid-layout"
       layouts={visibleLayouts}
       onLayoutChange={onLayoutChange}
       onBreakpointChange={onBreakpointChange}
+      onDragStart={handleInteractionStart}
+      onDragStop={handleInteractionStop}
+      onResizeStart={handleInteractionStart}
+      onResizeStop={handleInteractionStop}
       rowHeight={ROW_HEIGHT}
       width={windowWidth}
       draggableHandle=".drag-handle"
