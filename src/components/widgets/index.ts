@@ -3,7 +3,7 @@ import type { ComponentType } from 'react'
 import ConsoleWidget from './ConsoleWidget'
 import ExchangeWidget from './ExchangeWidget'
 import OrderbookWidget from './OrderbookWidget'
-import ArbitrageWidget from './ArbitrageWidget'
+import PremiumTableWidget from './PremiumTableWidget'
 import ChartWidget from './ChartWidget'
 import ExchangeCalcWidget from './ExchangeCalcWidget'
 import DexWidget from './DexWidget'
@@ -15,7 +15,7 @@ export const widgetComponents: Record<string, ComponentType> = {
   Console: ConsoleWidget,
   Exchange: ExchangeWidget,
   Orderbook: OrderbookWidget,
-  Arbitrage: ArbitrageWidget,
+  PremiumTable: PremiumTableWidget,
   Chart: ChartWidget,
   ExchangeCalc: ExchangeCalcWidget,
   Dex: DexWidget,

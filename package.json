@@ -13,6 +13,7 @@
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@fontsource/jetbrains-mono": "^5.2.8",
+    "@gloomydumber/premium-table": "^0.2.0",
     "@mui/icons-material": "^7.3.8",
     "@mui/material": "^7.3.8",
     "@scure/bip32": "^2.0.1",
@@ -25,6 +26,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-grid-layout": "^1.4.4",
+    "react-use-websocket": "^4.13.0",
     "react-virtuoso": "^4.18.1",
     "viem": "^2.46.1"
   },

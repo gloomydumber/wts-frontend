@@ -4,6 +4,27 @@ import type { Layouts } from 'react-grid-layout'
 import { defaultLayouts, WIDGET_REGISTRY } from '../layout/defaults'
 import type { DexWalletsState, DexSettings } from '../components/widgets/DexWidget/types'
 
+// Migration: rename Arbitrage → PremiumTable in persisted localStorage data
+function migrateArbitrageToPremiumTable() {
+  try {
+    const layoutsRaw = localStorage.getItem('layouts')
+    if (layoutsRaw) {
+      const replaced = layoutsRaw.replace(/"i"\s*:\s*"Arbitrage"/g, '"i":"PremiumTable"')
+      if (replaced !== layoutsRaw) localStorage.setItem('layouts', replaced)
+    }
+    const visRaw = localStorage.getItem('widgetVisibility')
+    if (visRaw) {
+      const vis = JSON.parse(visRaw) as Record<string, boolean>
+      if ('Arbitrage' in vis) {
+        vis['PremiumTable'] = vis['Arbitrage']
+        delete vis['Arbitrage']
+        localStorage.setItem('widgetVisibility', JSON.stringify(vis))
+      }
+    }
+  } catch { /* ignore migration errors */ }
+}
+migrateArbitrageToPremiumTable()
+
 // Layout state — persisted to localStorage
 export const layoutsAtom = atomWithStorage<Layouts>('layouts', defaultLayouts)
 

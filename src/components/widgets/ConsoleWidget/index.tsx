@@ -18,7 +18,7 @@ const initialLogs: LogEntry[] = [
   { time: '00:00:00', level: 'INFO', msg: 'WTS Frontend v0.1.0 initialized' },
   { time: '00:00:01', level: 'INFO', msg: 'Layout restored from localStorage' },
   { time: '00:00:02', level: 'SUCCESS', msg: 'Mock data loaded — no API calls (Phase 1)' },
-  { time: '00:00:03', level: 'INFO', msg: 'Widgets ready: Console, Order, Balance, Orderbook, Arbitrage' },
+  { time: '00:00:03', level: 'INFO', msg: 'Widgets ready: Console, Order, Balance, Orderbook, PremiumTable' },
 ]
 
 const mockMessages: Omit<LogEntry, 'time'>[] = [

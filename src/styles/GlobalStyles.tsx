@@ -109,50 +109,6 @@ export default function GlobalStyles() {
           borderBottom: '1px solid rgba(0,255,0,0.06)',
         },
 
-        // ArbitrageWidget — plain HTML table
-        '.arb-exchange-labels': {
-          display: 'flex',
-          justifyContent: 'space-between',
-          padding: '2px 8px',
-          fontSize: '0.6rem',
-          color: 'rgba(0,255,0,0.4)',
-        },
-        '.arb-table': {
-          width: '100%',
-          borderCollapse: 'collapse',
-          tableLayout: 'fixed',
-          fontSize: '0.7rem',
-        },
-        '.arb-th': {
-          position: 'sticky',
-          top: 0,
-          background: theme.palette.background.paper,
-          color: 'rgba(0,255,0,0.4)',
-          fontWeight: 700,
-          fontSize: '0.65rem',
-          textTransform: 'uppercase',
-          padding: '4px 8px',
-          borderBottom: '1px solid rgba(0,255,0,0.12)',
-          textAlign: 'left',
-        },
-        '.arb-th.arb-right, .arb-cell.arb-right': {
-          textAlign: 'right',
-        },
-        '.arb-cell': {
-          padding: '3px 8px',
-          borderBottom: '1px solid rgba(0,255,0,0.06)',
-          fontVariantNumeric: 'tabular-nums',
-        },
-        '.arb-ticker': {
-          fontWeight: 700,
-        },
-        '.arb-premium': {
-          fontWeight: 700,
-        },
-        '.arb-row:hover': {
-          background: 'rgba(0,255,0,0.04)',
-        },
-
         // ConsoleWidget — plain HTML lines
         '.console-line': {
           fontSize: '0.7rem',

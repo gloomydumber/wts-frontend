@@ -26,7 +26,7 @@ Widgets should be designed with clear data interfaces (TypeScript types for prop
 - [ ] OrderWidget — place orders on any CEX (mock or direct API)
 - [ ] BalanceWidget — aggregated balances across exchanges
 - [ ] OrderbookWidget — live orderbook display
-- [ ] ArbitrageWidget — import from `premium-table-refactored` package
+- [x] PremiumTableWidget — imported from `@gloomydumber/premium-table` package (live WebSocket)
 - [ ] ExchangeCalcWidget — USDTKRW calculator (import from separately published package; refactoring done outside this repo)
 - [ ] WalletWidget — DEX wallet management UI
 - [ ] SwapWidget — DEX swap interface
@@ -117,7 +117,7 @@ wts/
 │   │       ├── OrderWidget/
 │   │       ├── BalanceWidget/
 │   │       ├── OrderbookWidget/
-│   │       ├── ArbitrageWidget/        # wraps premium-table-refactored
+│   │       ├── PremiumTableWidget/      # wraps @gloomydumber/premium-table (live)
 │   │       ├── ExchangeCalcWidget/     # wraps usdt-krw-calculator
 │   │       ├── WalletWidget/
 │   │       ├── SwapWidget/
@@ -846,7 +846,7 @@ Steps 1–3 are **already implemented** in Phase 1 with mock data:
 | 1 | Set up new project (Vite + React + MUI 7 + Jotai) | 1 | DONE |
 | 2 | Port react-grid-layout system from rgl-practice | 1 | DONE |
 | 3 | Apply unified design system (theme, fonts, global styles) | 1 | DONE |
-| 4 | Import ArbitrageWidget from premium-table-refactored | 1 | DONE (mock impl, package import later) |
+| 4 | Import PremiumTableWidget from @gloomydumber/premium-table | 1 | DONE (real package, live WebSocket data) |
 | 5 | ~~Refactor usdt-krw-calculator → publish as package~~ | 1 | SKIPPED — done in separate repo |
 | 6 | ~~Build OrderWidget (mock data)~~ | 1 | MERGED → ExchangeWidget |
 | 7 | ~~Build BalanceWidget (mock data)~~ | 1 | MERGED → ExchangeWidget |
@@ -2033,3 +2033,30 @@ Automatic on first load:
 - `7f8da89` — `fix(dex): render unicode arrow in swap route path` — `\u2192` in JSX text was rendering as literal string; wrapped in `{'\u2192'}` expression
 
 All pushed to `origin/master`.
+
+## Session: 2026-02-19 — Replace ArbitrageWidget with PremiumTable Package
+
+### What Was Done
+
+Replaced the mock ArbitrageWidget with the real `@gloomydumber/premium-table` package (v0.2.0), which provides a self-contained premium table with live WebSocket connections to 6 exchanges. Renamed widget ID from `Arbitrage` → `PremiumTable` and label to `Premium Table`.
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `.npmrc` | Created — GitHub Packages registry for `@gloomydumber` scope |
+| `package.json` | Added `@gloomydumber/premium-table`, `react-use-websocket` |
+| `src/components/widgets/PremiumTableWidget/index.tsx` | Created — thin wrapper passing MUI theme + height="100%" |
+| `src/components/widgets/index.ts` | Changed import/key from ArbitrageWidget → PremiumTableWidget |
+| `src/layout/defaults.ts` | Renamed widget ID `Arbitrage` → `PremiumTable`, label → `Premium Table` |
+| `src/styles/GlobalStyles.tsx` | Removed all `.arb-*` CSS rules (package bundles its own styles) |
+| `src/store/atoms.ts` | Added `migrateArbitrageToPremiumTable()` — renames `Arbitrage` → `PremiumTable` in saved layouts and visibility localStorage |
+| `src/components/widgets/ConsoleWidget/index.tsx` | Updated mock log message |
+| `HANDOFF.md` | Updated migration checklist, widget references, session log |
+
+### Notes
+
+- `ArbitrageWidget/` directory kept as-is for reference (no longer registered in widget map)
+- localStorage migration runs once on load, converts old `Arbitrage` entries automatically
+- The package CSS is imported via `@gloomydumber/premium-table/style.css`
+- PremiumTable receives the MUI theme via `useTheme()` for dark/light mode support

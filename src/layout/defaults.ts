@@ -5,7 +5,7 @@ export const WIDGET_REGISTRY: WidgetConfig[] = [
   { id: 'Console', label: 'Console', permanent: true, defaultVisible: true },
   { id: 'Exchange', label: 'CEX', defaultVisible: true },
   { id: 'Orderbook', label: 'Orderbook', defaultVisible: true },
-  { id: 'Arbitrage', label: 'Arbitrage', defaultVisible: true },
+  { id: 'PremiumTable', label: 'Premium Table', defaultVisible: true },
   { id: 'Chart', label: 'Chart', defaultVisible: false },
   { id: 'ExchangeCalc', label: 'Exchange Calculator', defaultVisible: false },
   { id: 'Dex', label: 'DEX', defaultVisible: false },
@@ -36,35 +36,35 @@ const lgLayout: WidgetLayoutItem[] = [
   { i: 'Console', x: 0, y: 0, w: 4, h: 6, permanent: true },
   { i: 'Exchange', x: 0, y: 6, w: 8, h: 12 },
   { i: 'Orderbook', x: 4, y: 0, w: 4, h: 6 },
-  { i: 'Arbitrage', x: 8, y: 0, w: 4, h: 9, minW: 3 },
+  { i: 'PremiumTable', x: 8, y: 0, w: 4, h: 9, minW: 3 },
 ]
 
 const mdLayout: WidgetLayoutItem[] = [
   { i: 'Console', x: 0, y: 0, w: 5, h: 6, permanent: true },
   { i: 'Exchange', x: 0, y: 6, w: 10, h: 12 },
   { i: 'Orderbook', x: 5, y: 0, w: 5, h: 6 },
-  { i: 'Arbitrage', x: 0, y: 18, w: 5, h: 9, minW: 3 },
+  { i: 'PremiumTable', x: 0, y: 18, w: 5, h: 9, minW: 3 },
 ]
 
 const smLayout: WidgetLayoutItem[] = [
   { i: 'Console', x: 0, y: 0, w: 6, h: 5, permanent: true },
   { i: 'Exchange', x: 0, y: 5, w: 6, h: 14 },
   { i: 'Orderbook', x: 0, y: 19, w: 6, h: 8 },
-  { i: 'Arbitrage', x: 0, y: 27, w: 6, h: 9 },
+  { i: 'PremiumTable', x: 0, y: 27, w: 6, h: 9 },
 ]
 
 const xsLayout: WidgetLayoutItem[] = [
   { i: 'Console', x: 0, y: 0, w: 4, h: 5, permanent: true, isResizable: false, isDraggable: false },
   { i: 'Exchange', x: 0, y: 5, w: 4, h: 14, isResizable: false, isDraggable: false },
   { i: 'Orderbook', x: 0, y: 19, w: 4, h: 8, isResizable: false, isDraggable: false },
-  { i: 'Arbitrage', x: 0, y: 27, w: 4, h: 9, isResizable: false, isDraggable: false },
+  { i: 'PremiumTable', x: 0, y: 27, w: 4, h: 9, isResizable: false, isDraggable: false },
 ]
 
 const xxsLayout: WidgetLayoutItem[] = [
   { i: 'Console', x: 0, y: 0, w: 2, h: 5, permanent: true, isResizable: false, isDraggable: false },
   { i: 'Exchange', x: 0, y: 5, w: 2, h: 14, isResizable: false, isDraggable: false },
   { i: 'Orderbook', x: 0, y: 19, w: 2, h: 8, isResizable: false, isDraggable: false },
-  { i: 'Arbitrage', x: 0, y: 27, w: 2, h: 9, isResizable: false, isDraggable: false },
+  { i: 'PremiumTable', x: 0, y: 27, w: 2, h: 9, isResizable: false, isDraggable: false },
 ]
 
 export const defaultLayouts: Layouts = {
