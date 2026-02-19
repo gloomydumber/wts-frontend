@@ -2027,3 +2027,9 @@ Automatic on first load:
 - `updateActiveWallet` does a `.map()` over the wallets array on each update — O(n) but n = number of wallets (single digits), negligible
 
 **Build:** Passes (0 errors, 0 new lint warnings).
+
+**Commits:**
+- `97baddf` — `feat(dex): multi-wallet support with per-wallet chain state`
+- `7f8da89` — `fix(dex): render unicode arrow in swap route path` — `\u2192` in JSX text was rendering as literal string; wrapped in `{'\u2192'}` expression
+
+All pushed to `origin/master`.
