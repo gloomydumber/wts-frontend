@@ -2034,6 +2034,30 @@ Automatic on first load:
 
 All pushed to `origin/master`.
 
+## Session: 2026-02-20 — PremiumTable Adaptive Flush + Triangle Icons (0.3.3)
+
+### What Was Done
+
+Updated `@gloomydumber/premium-table` from 0.3.2 to 0.3.3. Key changes in the library:
+
+- **Adaptive flush rate**: Auto-detects device capability by measuring RAF frame-to-frame gaps. Fast devices (Apple Silicon) flush every frame; slow devices (i5-6600) auto-throttle to 32–100ms intervals. Recovery timer tries stepping back down every 2s. Manual override available via `setFlushInterval(ms)`.
+- **Triangle icons**: Replaced MUI SvgIcon components with Unicode triangles (▴ ▾ ▸) for zero Emotion overhead in the per-row hot path.
+- **`setFlushInterval` API**: New export for host apps to manually override flush interval (`-1` = auto, `>=0` = fixed ms).
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `package.json` | `@gloomydumber/premium-table` `^0.3.2` → `^0.3.3` |
+| `HANDOFF.md` | Session log entry |
+
+### Notes
+
+- `setFlushInterval` is available via `import { setFlushInterval } from '@gloomydumber/premium-table'` but not currently used in wts-frontend — auto-adaptive mode is the default
+- The adaptive throttle is transparent: prices still arrive and accumulate in module-level Maps, they just batch into bigger React state updates on slow devices
+
+---
+
 ## Session: 2026-02-19 — PremiumTable Performance Refactor (0.3.1)
 
 ### What Was Done
