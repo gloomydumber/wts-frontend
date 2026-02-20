@@ -231,7 +231,7 @@ Import weights 400, 500, 700 from `@fontsource/jetbrains-mono`.
 | Binance | `#F0B90B` | Exchange labels, badges |
 | Bybit | `#00C4B3` | Exchange labels, badges |
 | Bithumb | `#F37321` | Exchange labels, badges |
-| OKX | `#CFD3D8` | Exchange labels, badges |
+| OKX | `#87CEEB` | Exchange labels, badges |
 | Coinbase | `#FFFFFF` | Exchange labels, badges |
 
 #### Opacity Scale (Lime-Based)
