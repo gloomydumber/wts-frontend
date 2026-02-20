@@ -2054,6 +2054,8 @@ Updated `@gloomydumber/premium-table` from 0.3.3 to 0.3.5. Two bug fixes:
 
 - `destroyMarketData` is available via `import { destroyMarketData } from '@gloomydumber/premium-table'` but not needed in wts-frontend — the library's internal `WebSocketProvider` calls it on unmount automatically
 - Closing the PremiumTable widget now fully cleans up: WebSocket connections (react-use-websocket auto-close), Jotai atoms (isolated Provider GC'd), and module-level state (destroyMarketData)
+- The unmount cleanup (0.3.5) is a **code hygiene fix**, not a functional bug — WebSocket connections were already closed by react-use-websocket, and the recovery timer self-clears within ~8s. But it's correct to not leave dangling `setInterval` handles
+- `clearMarketData` (pair switching, calls React setters) vs `destroyMarketData` (unmount, nulls setter refs) — see premium-table-refactored HANDOFF.md architecture decision #28
 
 ---
 
