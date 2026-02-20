@@ -2034,6 +2034,29 @@ Automatic on first load:
 
 All pushed to `origin/master`.
 
+## Session: 2026-02-20 — PremiumTable Cleanup Fixes (0.3.4 → 0.3.5)
+
+### What Was Done
+
+Updated `@gloomydumber/premium-table` from 0.3.3 to 0.3.5. Two bug fixes:
+
+- **0.3.4 — Adaptive flush state reset in `clearMarketData`**: When switching market pairs while throttling was active, stale `adaptiveInterval`, `slowFrameCount`, `lastFlushTs`, and a running `recoveryTimer` carried over to the new pair. Now `clearMarketData()` calls `stopRecovery()` and resets all adaptive state.
+- **0.3.5 — Full teardown on widget unmount**: When the PremiumTable widget was closed, module-level state (`pricesByMarket`, `pendingTickers`, `recoveryTimer`, stale Jotai setter refs) was never cleaned up. Added `destroyMarketData()` function called via `useEffect` cleanup in `WebSocketProvider`. Also exported from the library for host apps needing manual teardown.
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `package.json` | `@gloomydumber/premium-table` `^0.3.3` → `^0.3.5` |
+| `HANDOFF.md` | Session log entry |
+
+### Notes
+
+- `destroyMarketData` is available via `import { destroyMarketData } from '@gloomydumber/premium-table'` but not needed in wts-frontend — the library's internal `WebSocketProvider` calls it on unmount automatically
+- Closing the PremiumTable widget now fully cleans up: WebSocket connections (react-use-websocket auto-close), Jotai atoms (isolated Provider GC'd), and module-level state (destroyMarketData)
+
+---
+
 ## Session: 2026-02-20 — PremiumTable Adaptive Flush + Triangle Icons (0.3.3)
 
 ### What Was Done
