@@ -2042,9 +2042,9 @@ All pushed to `origin/master`.
 
 2. **Fixed remaining visibility issues** — Yellow text/backgrounds (`#ffff00`) changed to `warning.main` for light mode visibility. Coinbase brand color `#FFFFFF` changed to `#0052FF` (was invisible on light backgrounds).
 
-3. **Updated premium-table-refactored** (0.3.5 → 0.4.0) — Replaced ~40 hardcoded dark-mode colors in the library source with theme-aware references. Components now adapt to whatever theme the host provides via the `theme` prop. Pushed to origin (auto-publishes via CI).
+3. **Updated premium-table-refactored** (0.3.5 → 0.4.2) — Replaced ~40 hardcoded dark-mode colors in the library source with theme-aware references. Components now adapt to whatever theme the host provides via the `theme` prop. Ticker text uses default MUI text color for arbitrageable tickers, red (`#ff0000`) for non-arbitrageable (unchanged across themes). Pushed to origin (auto-publishes via CI).
 
-4. **Upgraded `@gloomydumber/premium-table`** in wts-frontend from 0.3.5 to 0.4.0.
+4. **Upgraded `@gloomydumber/premium-table`** in wts-frontend from 0.3.5 to 0.4.2.
 
 ### Changes
 
@@ -2059,7 +2059,7 @@ All pushed to `origin/master`.
 | `src/components/widgets/ShortcutWidget/index.tsx` | Fallback colors → theme |
 | `src/components/widgets/BalanceWidget/index.tsx` | Yellow → `warning.main` |
 | `src/types/exchange.ts` | Coinbase `#FFFFFF` → `#0052FF` |
-| `package.json` | `@gloomydumber/premium-table` `^0.3.5` → `^0.4.0` |
+| `package.json` | `@gloomydumber/premium-table` `^0.3.5` → `^0.4.2` |
 
 ## Session: 2026-02-20 — PremiumTable Cleanup Fixes (0.3.4 → 0.3.5)
 
