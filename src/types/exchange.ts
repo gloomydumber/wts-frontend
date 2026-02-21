@@ -93,7 +93,7 @@ export const EXCHANGE_COLORS: Record<string, string> = {
   Bybit: '#00C4B3',
   Bithumb: '#F37321',
   OKX: '#87CEEB',
-  Coinbase: '#FFFFFF',
+  Coinbase: '#0052FF',
   KuCoin: '#25AF92',
   MEXC: '#70F5B0',
 }

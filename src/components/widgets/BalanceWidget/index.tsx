@@ -63,8 +63,8 @@ export default function BalanceWidget() {
             sx={{
               minHeight: 24,
               py: 0,
-              color: EXCHANGE_COLORS[ex] ?? 'rgba(0,255,0,0.4)',
-              '&.Mui-selected': { color: EXCHANGE_COLORS[ex] ?? '#00ff00' },
+              color: EXCHANGE_COLORS[ex] ?? 'text.secondary',
+              '&.Mui-selected': { color: EXCHANGE_COLORS[ex] ?? 'primary.main' },
             }}
           />
         ))}
@@ -87,7 +87,7 @@ export default function BalanceWidget() {
                 <TableCell align="right">
                   {row.free.toLocaleString('en-US', { maximumFractionDigits: 8 })}
                 </TableCell>
-                <TableCell align="right" sx={{ color: row.locked > 0 ? '#ffff00' : 'inherit' }}>
+                <TableCell align="right" sx={{ color: row.locked > 0 ? 'warning.main' : 'inherit' }}>
                   {row.locked > 0
                     ? row.locked.toLocaleString('en-US', { maximumFractionDigits: 8 })
                     : '—'}

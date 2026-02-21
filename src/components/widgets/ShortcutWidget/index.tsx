@@ -38,7 +38,7 @@ export default function ShortcutWidget() {
           '& .MuiInputLabel-root': { fontSize: '0.7rem' },
         }}
       />
-      <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>
+      <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', mb: 0.5 }}>
         Open in exchange:
       </Typography>
       <List dense sx={{ flex: 1, overflow: 'auto', p: 0 }}>
@@ -55,7 +55,7 @@ export default function ShortcutWidget() {
               primary={link.exchange}
               primaryTypographyProps={{
                 fontSize: '0.7rem',
-                color: EXCHANGE_COLORS[link.exchange] ?? '#00ff00',
+                color: EXCHANGE_COLORS[link.exchange] ?? 'primary.main',
               }}
             />
           </ListItemButton>

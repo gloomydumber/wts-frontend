@@ -74,7 +74,7 @@ export default function DepositTab({ metadata, state, onChange }: DepositTabProp
 
       {entry && (
         <Box sx={{ mt: 1 }}>
-          <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>
+          <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary', mb: 0.5 }}>
             {networks.length === 1 ? `Address (${network})` : 'Address'}
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -82,18 +82,18 @@ export default function DepositTab({ metadata, state, onChange }: DepositTabProp
               {entry.address}
             </Typography>
             <Tooltip title="Copy">
-              <IconButton size="small" onClick={() => copy(entry.address, 'address')} sx={{ color: copiedField === 'address' ? '#00ff00' : 'inherit', transition: 'color 0.15s' }}>
+              <IconButton size="small" onClick={() => copy(entry.address, 'address')} sx={{ color: copiedField === 'address' ? 'primary.main' : 'inherit', transition: 'color 0.15s' }}>
                 <ContentCopyIcon sx={{ fontSize: '0.8rem' }} />
               </IconButton>
             </Tooltip>
           </Box>
           {entry.memo && (
             <Box sx={{ mt: 1 }}>
-              <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>Memo / Tag</Typography>
+              <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary', mb: 0.5 }}>Memo / Tag</Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <Typography sx={{ fontSize: '0.8rem', flex: 1 }}>{entry.memo}</Typography>
                 <Tooltip title="Copy">
-                  <IconButton size="small" onClick={() => copy(entry.memo!, 'memo')} sx={{ color: copiedField === 'memo' ? '#00ff00' : 'inherit', transition: 'color 0.15s' }}>
+                  <IconButton size="small" onClick={() => copy(entry.memo!, 'memo')} sx={{ color: copiedField === 'memo' ? 'primary.main' : 'inherit', transition: 'color 0.15s' }}>
                     <ContentCopyIcon sx={{ fontSize: '0.8rem' }} />
                   </IconButton>
                 </Tooltip>

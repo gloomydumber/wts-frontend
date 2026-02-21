@@ -1,17 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Box } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 
 interface LogEntry {
   time: string
   level: 'INFO' | 'WARN' | 'ERROR' | 'SUCCESS'
   msg: string
-}
-
-const LEVEL_COLORS: Record<string, string> = {
-  INFO: '#00ff00',
-  WARN: '#ffff00',
-  ERROR: '#ff0000',
-  SUCCESS: '#00ff00',
 }
 
 const initialLogs: LogEntry[] = [
@@ -40,9 +34,20 @@ function getTimestamp(): string {
 }
 
 export default function ConsoleWidget() {
+  const theme = useTheme()
   const [logs, setLogs] = useState<LogEntry[]>(initialLogs)
   const containerRef = useRef<HTMLDivElement>(null)
   const isAtBottomRef = useRef(true)
+
+  // Extract theme colors for inline styles (hot render path — no sx)
+  const timeColor = theme.palette.text.secondary
+  const msgColor = theme.palette.text.primary
+  const levelColors: Record<string, string> = {
+    INFO: theme.palette.primary.main,
+    WARN: theme.palette.warning.main,
+    ERROR: theme.palette.error.main,
+    SUCCESS: theme.palette.success.main,
+  }
 
   // Track if user is scrolled to bottom
   const handleScroll = useCallback(() => {
@@ -77,21 +82,21 @@ export default function ConsoleWidget() {
     <Box
       ref={containerRef}
       onScroll={handleScroll}
-      sx={{ p: 0.5, overflow: 'auto', height: '100%', bgcolor: '#0a0a0a' }}
+      sx={{ p: 0.5, overflow: 'auto', height: '100%', bgcolor: 'background.default' }}
     >
       {logs.map((log, i) => (
         <div key={i} className="console-line">
-          <span style={{ color: 'rgba(0,255,0,0.4)', marginRight: 4 }}>{log.time}</span>
+          <span style={{ color: timeColor, marginRight: 4 }}>{log.time}</span>
           <span
             style={{
-              color: LEVEL_COLORS[log.level],
+              color: levelColors[log.level],
               marginRight: 4,
               fontWeight: log.level === 'ERROR' ? 700 : 400,
             }}
           >
             [{log.level}]
           </span>
-          <span style={{ color: '#00ff00' }}>{log.msg}</span>
+          <span style={{ color: msgColor }}>{log.msg}</span>
         </div>
       ))}
     </Box>

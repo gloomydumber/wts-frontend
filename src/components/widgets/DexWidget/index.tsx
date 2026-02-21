@@ -267,7 +267,7 @@ export default function DexWidget() {
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Wallet tabs row (only when wallets exist or adding) */}
       {(hasWallets || addingWallet) && (
-        <Box sx={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid rgba(0,255,0,0.12)' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', borderBottom: 1, borderColor: 'divider' }}>
           <Tabs
             value={addingWallet ? false : walletsState.activeWalletId}
             onChange={handleWalletTabChange}
@@ -376,7 +376,7 @@ export default function DexWidget() {
             />
           ))}
         </Tabs>
-        <IconButton size="small" onClick={() => setSettingsOpen(true)} sx={{ color: 'rgba(0,255,0,0.4)', mr: 0.5 }}>
+        <IconButton size="small" onClick={() => setSettingsOpen(true)} sx={{ color: 'text.secondary', mr: 0.5 }}>
           <SettingsIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </Box>
@@ -412,7 +412,7 @@ export default function DexWidget() {
       ) : addingWallet ? (
         /* Add-wallet: show create/import choice */
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, p: 3 }}>
-          <Typography sx={{ fontSize: '0.75rem', color: '#00ff00', fontWeight: 700 }}>
+          <Typography sx={{ fontSize: '0.75rem', color: 'primary.main', fontWeight: 700 }}>
             Add New Wallet
           </Typography>
           <Box sx={{ display: 'flex', gap: 1 }}>
@@ -426,7 +426,7 @@ export default function DexWidget() {
             </Button>
           </Box>
           <Button size="small" onClick={() => setAddingWallet(false)}
-            sx={{ fontSize: '0.6rem', textTransform: 'none', color: 'rgba(0,255,0,0.4)' }}>
+            sx={{ fontSize: '0.6rem', textTransform: 'none', color: 'text.secondary' }}>
             Cancel
           </Button>
         </Box>
@@ -441,8 +441,8 @@ export default function DexWidget() {
           />
 
           {/* Warning banner */}
-          <Box sx={{ px: 1, py: 0.25, bgcolor: 'rgba(255,255,0,0.06)', borderBottom: '1px solid rgba(255,255,0,0.12)' }}>
-            <Typography sx={{ fontSize: '0.55rem', color: 'rgba(255,255,0,0.6)' }}>
+          <Box sx={{ px: 1, py: 0.25, bgcolor: (t) => t.palette.mode === 'dark' ? 'rgba(255,255,0,0.06)' : 'rgba(237,108,2,0.06)', borderBottom: 1, borderColor: (t) => t.palette.mode === 'dark' ? 'rgba(255,255,0,0.12)' : 'rgba(237,108,2,0.12)' }}>
+            <Typography sx={{ fontSize: '0.55rem', color: 'warning.main' }}>
               Development tool — do not use with significant funds
             </Typography>
           </Box>
@@ -498,10 +498,10 @@ function WalletSetupPrompt({
   if (setupMode === 'none') {
     return (
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, p: 3 }}>
-        <Typography sx={{ fontSize: '0.8rem', color: '#00ff00', fontWeight: 700 }}>
+        <Typography sx={{ fontSize: '0.8rem', color: 'primary.main', fontWeight: 700 }}>
           No Wallet Connected
         </Typography>
-        <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)', textAlign: 'center', maxWidth: 300 }}>
+        <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', textAlign: 'center', maxWidth: 300 }}>
           Create a new HD wallet or import an existing mnemonic to get started with DEX operations.
         </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -520,17 +520,17 @@ function WalletSetupPrompt({
 
   return (
     <Box sx={{ flex: 1, overflow: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-      <Typography sx={{ fontSize: '0.75rem', color: '#00ff00', fontWeight: 700 }}>
+      <Typography sx={{ fontSize: '0.75rem', color: 'primary.main', fontWeight: 700 }}>
         {setupMode === 'create' ? 'Create New Wallet' : 'Import Wallet'}
       </Typography>
 
       {setupMode === 'create' ? (
         <>
-          <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)' }}>
+          <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary' }}>
             Write down this mnemonic phrase and store it securely:
           </Typography>
-          <Box sx={{ p: 1.5, bgcolor: 'rgba(0,255,0,0.04)', border: '1px solid rgba(0,255,0,0.12)', borderRadius: '2px' }}>
-            <Typography sx={{ fontSize: '0.75rem', color: '#00ff00', fontFamily: 'monospace', wordBreak: 'break-word', lineHeight: 1.8 }}>
+          <Box sx={{ p: 1.5, bgcolor: 'action.hover', border: 1, borderColor: 'divider', borderRadius: '2px' }}>
+            <Typography sx={{ fontSize: '0.75rem', color: 'primary.main', fontFamily: 'monospace', wordBreak: 'break-word', lineHeight: 1.8 }}>
               {setupMnemonic}
             </Typography>
           </Box>
@@ -594,8 +594,8 @@ function WalletBar({ chain, walletState, onAccountChange, onAddAccount }: {
   }
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5, borderBottom: '1px solid rgba(0,255,0,0.12)' }}>
-      <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)', mr: 0.5 }}>Account:</Typography>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5, borderBottom: 1, borderColor: 'divider' }}>
+      <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary', mr: 0.5 }}>Account:</Typography>
       <Select
         value={walletState.activeAccountIndex}
         onChange={(e) => onAccountChange(e.target.value as number)}
@@ -612,11 +612,11 @@ function WalletBar({ chain, walletState, onAccountChange, onAddAccount }: {
         })}
       </Select>
       <IconButton size="small" onClick={handleCopy} title={address}
-        sx={{ color: copied ? '#00ff00' : 'rgba(0,255,0,0.4)', p: 0.25 }}>
+        sx={{ color: copied ? 'primary.main' : 'text.secondary', p: 0.25 }}>
         <ContentCopyIcon sx={{ fontSize: 12 }} />
       </IconButton>
       <IconButton size="small" onClick={onAddAccount}
-        sx={{ color: 'rgba(0,255,0,0.4)', p: 0.25 }}>
+        sx={{ color: 'text.secondary', p: 0.25 }}>
         <AddIcon sx={{ fontSize: 14 }} />
       </IconButton>
     </Box>
@@ -633,17 +633,17 @@ function LoadingView({ chainLabel, progress }: {
 
   return (
     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, p: 3 }}>
-      <Typography sx={{ fontSize: '0.7rem', color: 'rgba(0,255,0,0.6)' }}>
+      <Typography sx={{ fontSize: '0.7rem', color: 'text.secondary' }}>
         Loading {chainLabel} metadata...
       </Typography>
       <Box sx={{ width: '60%' }}>
         <LinearProgress variant="determinate" value={pct} sx={{
-          height: 4, borderRadius: 2, bgcolor: 'rgba(0,255,0,0.08)',
-          '& .MuiLinearProgress-bar': { bgcolor: '#00ff00' },
+          height: 4, borderRadius: 2, bgcolor: 'action.hover',
+          '& .MuiLinearProgress-bar': { bgcolor: 'primary.main' },
         }} />
       </Box>
       {progress && (
-        <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)' }}>
+        <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary' }}>
           {progress.loaded}/{progress.total}
         </Typography>
       )}
@@ -679,7 +679,7 @@ function WidgetBody({ chain, metadata, walletState, dexTab, availableTabs,
         <BalanceTab chain={chain} metadata={metadata} walletState={walletState} />
       </Box>
 
-      <Divider orientation="vertical" flexItem sx={{ borderColor: 'rgba(0,255,0,0.12)' }} />
+      <Divider orientation="vertical" flexItem sx={{ borderColor: 'divider' }} />
 
       {/* Right column: Tabbed operations */}
       <Box sx={{ flex: '7 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

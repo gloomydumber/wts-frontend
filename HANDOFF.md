@@ -2034,6 +2034,33 @@ Automatic on first load:
 
 All pushed to `origin/master`.
 
+## Session: 2026-02-21 — Light Theme Fix + PremiumTable Theme Support (0.4.0)
+
+### What Was Done
+
+1. **Fixed light theme across all wts-frontend widgets** — Replaced ~70+ hardcoded dark-mode colors (`#00ff00`, `rgba(0,255,0,...)`, `#0a0a0a`) with MUI theme palette references (`'primary.main'`, `'text.secondary'`, `'divider'`, etc.) across ~25 widget files. Completed `lightTheme` component overrides in `theme.ts` to fix text sizes changing on toggle.
+
+2. **Fixed remaining visibility issues** — Yellow text/backgrounds (`#ffff00`) changed to `warning.main` for light mode visibility. Coinbase brand color `#FFFFFF` changed to `#0052FF` (was invisible on light backgrounds).
+
+3. **Updated premium-table-refactored** (0.3.5 → 0.4.0) — Replaced ~40 hardcoded dark-mode colors in the library source with theme-aware references. Components now adapt to whatever theme the host provides via the `theme` prop. Pushed to origin (auto-publishes via CI).
+
+4. **Upgraded `@gloomydumber/premium-table`** in wts-frontend from 0.3.5 to 0.4.0.
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `src/styles/theme.ts` | Shared component overrides between dark/light themes |
+| `src/styles/GlobalStyles.tsx` | Theme-aware scrollbar, header, border colors |
+| `src/components/widgets/ConsoleWidget/index.tsx` | `useTheme()` + inline styles for hot path |
+| `src/components/widgets/OrderbookWidget/index.tsx` | `useTheme()` + inline styles for hot path |
+| `src/components/widgets/ExchangeWidget/**` | All tabs: green → theme palette |
+| `src/components/widgets/DexWidget/**` | All tabs + settings: green → theme palette |
+| `src/components/widgets/ShortcutWidget/index.tsx` | Fallback colors → theme |
+| `src/components/widgets/BalanceWidget/index.tsx` | Yellow → `warning.main` |
+| `src/types/exchange.ts` | Coinbase `#FFFFFF` → `#0052FF` |
+| `package.json` | `@gloomydumber/premium-table` `^0.3.5` → `^0.4.0` |
+
 ## Session: 2026-02-20 — PremiumTable Cleanup Fixes (0.3.4 → 0.3.5)
 
 ### What Was Done

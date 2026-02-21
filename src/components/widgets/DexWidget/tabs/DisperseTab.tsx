@@ -43,7 +43,7 @@ export default function DisperseTab({ chain, metadata, walletState, state, onCha
   if (!walletState.initialized || walletState.accounts.length === 0) {
     return (
       <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-        <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)' }}>
+        <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>
           Create wallet to use Disperse
         </Typography>
       </Box>
@@ -81,13 +81,13 @@ export default function DisperseTab({ chain, metadata, walletState, state, onCha
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)', textTransform: 'uppercase', fontWeight: 700 }}>
+      <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', textTransform: 'uppercase', fontWeight: 700 }}>
         Disperse — {chain.label}
       </Typography>
 
       {/* Token selector */}
       <Box>
-        <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>Token</Typography>
+        <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', mb: 0.5 }}>Token</Typography>
         <Select
           value={state.token}
           onChange={(e) => onChange({ token: e.target.value })}
@@ -161,7 +161,7 @@ export default function DisperseTab({ chain, metadata, walletState, state, onCha
 
       {/* CSV import */}
       <Box>
-        <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>
+        <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', mb: 0.5 }}>
           Import CSV (address,amount per line)
         </Typography>
         <Box sx={{ display: 'flex', gap: 0.5 }}>
@@ -183,13 +183,13 @@ export default function DisperseTab({ chain, metadata, walletState, state, onCha
       </Box>
 
       {/* Summary */}
-      <Box sx={{ p: 1, bgcolor: 'rgba(0,255,0,0.04)', borderRadius: '2px', border: '1px solid rgba(0,255,0,0.06)' }}>
-        <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)' }}>
+      <Box sx={{ p: 1, bgcolor: 'action.hover', borderRadius: '2px', border: 1, borderColor: 'divider' }}>
+        <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary' }}>
           Recipients: {state.recipients.filter((r) => r.address).length} |
           Total: {totalAmount.toFixed(6)} {selectedToken?.symbol} |
           Method: {chain.chainType === 'solana' ? 'Native Batch' : 'Multicall3'}
         </Typography>
-        <Typography sx={{ fontSize: '0.5rem', color: 'rgba(0,255,0,0.3)' }}>
+        <Typography sx={{ fontSize: '0.5rem', color: 'text.disabled' }}>
           Est. gas: {gasInfo.medium} {gasInfo.unit}
         </Typography>
       </Box>

@@ -138,7 +138,7 @@ export default function WithdrawTab({ exchange, metadata, state, onChange }: Wit
 
       {/* Destination exchange — auto-fills address/memo from target exchange's deposit address */}
       <Box sx={{ mb: 1 }}>
-        <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>To</Typography>
+        <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary', mb: 0.5 }}>To</Typography>
         <Autocomplete
           value={destination}
           onChange={(_, v) => { if (v) handleDestinationChange(v) }}
@@ -164,7 +164,7 @@ export default function WithdrawTab({ exchange, metadata, state, onChange }: Wit
       <TextField label="Amount" value={amount} onChange={(e) => onChange({ amount: e.target.value })} size="small" fullWidth sx={inputSx} />
 
       {selectedNet && (
-        <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)' }}>
+        <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>
           Network: {selectedNet.name} | Fee: {selectedNet.fee}
         </Typography>
       )}

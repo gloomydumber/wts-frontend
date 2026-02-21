@@ -3,6 +3,7 @@ import { useTheme } from '@mui/material/styles'
 
 export default function GlobalStyles() {
   const theme = useTheme()
+  const isDark = theme.palette.mode === 'dark'
 
   return (
     <MuiGlobalStyles
@@ -19,7 +20,7 @@ export default function GlobalStyles() {
           width: '100%',
         },
         '.grid-item': {
-          border: '1px solid #999',
+          border: `1px solid ${theme.palette.divider}`,
           display: 'flex',
           flexDirection: 'column',
           position: 'relative',
@@ -63,15 +64,15 @@ export default function GlobalStyles() {
           background: 'transparent',
         },
         '*::-webkit-scrollbar-thumb': {
-          background: 'rgba(0, 255, 0, 0.15)',
+          background: isDark ? 'rgba(0, 255, 0, 0.15)' : 'rgba(0, 0, 0, 0.15)',
           borderRadius: '3px',
         },
         '*::-webkit-scrollbar-thumb:hover': {
-          background: 'rgba(0, 255, 0, 0.3)',
+          background: isDark ? 'rgba(0, 255, 0, 0.3)' : 'rgba(0, 0, 0, 0.3)',
         },
         '*': {
           scrollbarWidth: 'thin',
-          scrollbarColor: 'rgba(0, 255, 0, 0.15) transparent',
+          scrollbarColor: `${isDark ? 'rgba(0, 255, 0, 0.15)' : 'rgba(0, 0, 0, 0.15)'} transparent`,
         },
 
         // OrderbookWidget — plain HTML, no Emotion churn
@@ -79,11 +80,11 @@ export default function GlobalStyles() {
           display: 'flex',
           fontSize: '0.65rem',
           textTransform: 'uppercase',
-          color: 'rgba(0,255,0,0.4)',
+          color: theme.palette.text.secondary,
           fontWeight: 700,
           letterSpacing: '0.05em',
           padding: '2px 4px',
-          background: '#0d0d0d',
+          background: isDark ? '#0d0d0d' : '#eeeeee',
         },
         '.ob-row': {
           display: 'flex',
@@ -103,10 +104,10 @@ export default function GlobalStyles() {
         '.ob-spread': {
           textAlign: 'center',
           fontSize: '0.65rem',
-          color: 'rgba(0,255,0,0.4)',
+          color: theme.palette.text.secondary,
           padding: '2px 0',
-          borderTop: '1px solid rgba(0,255,0,0.06)',
-          borderBottom: '1px solid rgba(0,255,0,0.06)',
+          borderTop: `1px solid ${theme.palette.divider}`,
+          borderBottom: `1px solid ${theme.palette.divider}`,
         },
 
         // ConsoleWidget — plain HTML lines

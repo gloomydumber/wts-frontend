@@ -15,7 +15,7 @@ export default function MarginWidget() {
 
   return (
     <Box sx={{ p: 1, height: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)', textTransform: 'uppercase' }}>
+      <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', textTransform: 'uppercase' }}>
         Isolated Margin (Binance)
       </Typography>
 
@@ -31,7 +31,7 @@ export default function MarginWidget() {
 
       <TextField label="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} size="small" fullWidth sx={inputSx} />
 
-      <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)' }}>
+      <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>
         {action === 'transfer' ? 'Max transferable: 0.5000 BTC (mock)' :
          action === 'borrow' ? 'Max borrowable: 1.0000 BTC (mock)' :
          'Outstanding: 0.2500 BTC + 0.0012 interest (mock)'}

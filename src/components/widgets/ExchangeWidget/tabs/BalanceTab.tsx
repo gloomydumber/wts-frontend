@@ -67,7 +67,7 @@ export default function BalanceTab({ exchange }: { exchange: ExchangeConfig }) {
 
   if (!wallets || Object.keys(wallets).length === 0) {
     return (
-      <Typography sx={{ fontSize: '0.7rem', color: 'rgba(0,255,0,0.4)', p: 1 }}>
+      <Typography sx={{ fontSize: '0.7rem', color: 'text.secondary', p: 1 }}>
         No balance data (mock)
       </Typography>
     )
@@ -134,15 +134,15 @@ export default function BalanceTab({ exchange }: { exchange: ExchangeConfig }) {
                       }}
                       sx={{
                         cursor: 'pointer',
-                        color: copiedAsset === key ? '#00ff00' : 'inherit',
-                        '&:hover': { color: '#00ff00' },
+                        color: copiedAsset === key ? 'primary.main' : 'inherit',
+                        '&:hover': { color: 'primary.main' },
                         transition: 'color 0.15s',
                       }}
                     >
                       {formatCryptoAmount(row.free)}
                     </Box>
                   </TableCell>
-                  <TableCell align="right" sx={{ color: row.locked > 0 ? '#ffff00' : 'inherit' }}>
+                  <TableCell align="right" sx={{ color: row.locked > 0 ? 'warning.main' : 'inherit' }}>
                     {row.locked > 0 ? formatCryptoAmount(row.locked) : '—'}
                   </TableCell>
                   {margin && (

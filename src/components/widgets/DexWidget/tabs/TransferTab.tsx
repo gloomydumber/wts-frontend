@@ -23,7 +23,7 @@ export default function TransferTab({ chain, metadata, walletState, state, onCha
   if (!walletState.initialized || walletState.accounts.length === 0) {
     return (
       <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-        <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)' }}>
+        <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>
           Create wallet to send transfers
         </Typography>
       </Box>
@@ -32,13 +32,13 @@ export default function TransferTab({ chain, metadata, walletState, state, onCha
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-      <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)', textTransform: 'uppercase', fontWeight: 700 }}>
+      <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', textTransform: 'uppercase', fontWeight: 700 }}>
         Send — {chain.label}
       </Typography>
 
       {/* Token selector */}
       <Box>
-        <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>Token</Typography>
+        <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', mb: 0.5 }}>Token</Typography>
         <Select
           value={state.token}
           onChange={(e) => onChange({ token: e.target.value })}
@@ -56,7 +56,7 @@ export default function TransferTab({ chain, metadata, walletState, state, onCha
 
       {/* To address */}
       <Box>
-        <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>Recipient Address</Typography>
+        <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', mb: 0.5 }}>Recipient Address</Typography>
         <TextField
           fullWidth
           size="small"
@@ -70,7 +70,7 @@ export default function TransferTab({ chain, metadata, walletState, state, onCha
       {/* Amount */}
       <Box>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-          <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)' }}>Amount</Typography>
+          <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary' }}>Amount</Typography>
           <Button size="small" onClick={() => onChange({ amount: 'MAX' })} sx={{ fontSize: '0.5rem', minWidth: 'auto', px: 0.5 }}>
             Max
           </Button>
@@ -88,7 +88,7 @@ export default function TransferTab({ chain, metadata, walletState, state, onCha
       {/* Memo (Solana only) */}
       {chain.chainType === 'solana' && (
         <Box>
-          <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>Memo (optional)</Typography>
+          <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', mb: 0.5 }}>Memo (optional)</Typography>
           <TextField
             fullWidth
             size="small"
@@ -101,12 +101,12 @@ export default function TransferTab({ chain, metadata, walletState, state, onCha
       )}
 
       {/* Gas estimate */}
-      <Box sx={{ p: 1, bgcolor: 'rgba(0,255,0,0.04)', borderRadius: '2px', border: '1px solid rgba(0,255,0,0.06)' }}>
-        <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)' }}>
+      <Box sx={{ p: 1, bgcolor: 'action.hover', borderRadius: '2px', border: 1, borderColor: 'divider' }}>
+        <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary' }}>
           Estimated Gas: {gasInfo.medium} {gasInfo.unit}
         </Typography>
         {selectedToken && (
-          <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', mt: 0.25 }}>
+          <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', mt: 0.25 }}>
             Token: {selectedToken.symbol} ({selectedToken.name})
           </Typography>
         )}

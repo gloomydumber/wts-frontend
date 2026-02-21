@@ -178,7 +178,7 @@ export default function OrderTab({ exchange, pair, state, onChange }: OrderTabPr
         slotProps={{ htmlInput: { inputMode: 'decimal' } }}
       />
 
-      <Typography sx={{ fontSize: '0.7rem', color: 'rgba(0,255,0,0.4)', textAlign: 'right', mt: 0.5 }}>
+      <Typography sx={{ fontSize: '0.7rem', color: 'text.secondary', textAlign: 'right', mt: 0.5 }}>
         Total: {total} {quote}
       </Typography>
 
@@ -192,10 +192,10 @@ export default function OrderTab({ exchange, pair, state, onChange }: OrderTabPr
                 onChange={handleSellOnlyToggle}
                 size="small"
                 disabled={loopActive}
-                sx={{ p: 0.3, color: 'rgba(0,255,0,0.5)', '&.Mui-checked': { color: '#00ff00' } }}
+                sx={{ p: 0.3, color: 'text.secondary', '&.Mui-checked': { color: 'primary.main' } }}
               />
             }
-            label={<Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.7)' }}>Sell-Only (polling)</Typography>}
+            label={<Typography sx={{ fontSize: '0.6rem', color: 'text.primary' }}>Sell-Only (polling)</Typography>}
             sx={{ m: 0 }}
           />
           {/* Polling interval — shown when Sell-Only is checked */}

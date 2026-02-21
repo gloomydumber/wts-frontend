@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, memo } from 'react'
 import { Box } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 
 interface OrderbookEntry {
   price: number
@@ -42,10 +43,14 @@ const RowLine = memo(function RowLine({
   entry,
   side,
   maxTotal,
+  volumeColor,
+  totalColor,
 }: {
   entry: OrderbookEntry
   side: 'ask' | 'bid'
   maxTotal: number
+  volumeColor: string
+  totalColor: string
 }) {
   const pct = (entry.total / maxTotal) * 100
   const barColor = side === 'ask' ? 'rgba(255,0,0,0.12)' : 'rgba(0,0,255,0.12)'
@@ -66,10 +71,10 @@ const RowLine = memo(function RowLine({
       <span className="ob-cell" style={{ color: textColor }}>
         {entry.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
       </span>
-      <span className="ob-cell ob-right" style={{ color: '#00ff00' }}>
+      <span className="ob-cell ob-right" style={{ color: volumeColor }}>
         {entry.quantity.toFixed(4)}
       </span>
-      <span className="ob-cell ob-right" style={{ color: 'rgba(0,255,0,0.4)' }}>
+      <span className="ob-cell ob-right" style={{ color: totalColor }}>
         {entry.total.toFixed(4)}
       </span>
     </div>
@@ -77,7 +82,12 @@ const RowLine = memo(function RowLine({
 })
 
 export default function OrderbookWidget() {
+  const theme = useTheme()
   const [data, setData] = useState(generateMockOrderbook)
+
+  // Extract theme colors for inline styles (hot render path)
+  const volumeColor = theme.palette.primary.main
+  const totalColor = theme.palette.text.secondary
 
   useEffect(() => {
     const interval = setInterval(() => setData(generateMockOrderbook()), 1500)
@@ -106,7 +116,7 @@ export default function OrderbookWidget() {
       {/* Asks */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
         {data.asks.map((entry, i) => (
-          <RowLine key={`a${i}`} entry={entry} side="ask" maxTotal={maxTotal} />
+          <RowLine key={`a${i}`} entry={entry} side="ask" maxTotal={maxTotal} volumeColor={volumeColor} totalColor={totalColor} />
         ))}
       </div>
 
@@ -116,7 +126,7 @@ export default function OrderbookWidget() {
       {/* Bids */}
       <div style={{ flex: 1, overflow: 'hidden' }}>
         {data.bids.map((entry, i) => (
-          <RowLine key={`b${i}`} entry={entry} side="bid" maxTotal={maxTotal} />
+          <RowLine key={`b${i}`} entry={entry} side="bid" maxTotal={maxTotal} volumeColor={volumeColor} totalColor={totalColor} />
         ))}
       </div>
     </Box>

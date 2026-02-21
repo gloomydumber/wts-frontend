@@ -50,7 +50,7 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
   if (availableProtocols.length === 0) {
     return (
       <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-        <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)' }}>
+        <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>
           No perpetual protocols available on {chain.label}
         </Typography>
       </Box>
@@ -60,7 +60,7 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
   if (!walletState.initialized || walletState.accounts.length === 0) {
     return (
       <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-        <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)' }}>
+        <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>
           Create wallet to trade perpetuals
         </Typography>
       </Box>
@@ -76,13 +76,13 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)', textTransform: 'uppercase', fontWeight: 700 }}>
+      <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', textTransform: 'uppercase', fontWeight: 700 }}>
         Perpetuals — {chain.label}
       </Typography>
 
       {/* Protocol selector */}
       <Box>
-        <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>Protocol</Typography>
+        <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', mb: 0.5 }}>Protocol</Typography>
         <Select
           value={state.protocol}
           onChange={(e) => handleProtocolChange(e.target.value)}
@@ -100,7 +100,7 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
 
       {/* Pair selector */}
       <Box>
-        <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>Pair</Typography>
+        <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', mb: 0.5 }}>Pair</Typography>
         <Select
           value={state.pair}
           onChange={(e) => onChange({ pair: e.target.value })}
@@ -116,7 +116,7 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
 
       {/* Long / Short toggle — Korean convention: long=red, short=blue */}
       <Box>
-        <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>Side</Typography>
+        <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', mb: 0.5 }}>Side</Typography>
         <ToggleButtonGroup
           value={state.side}
           exclusive
@@ -126,14 +126,14 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
         >
           <ToggleButton value="long" sx={{
             fontSize: '0.65rem', py: 0.25,
-            color: state.side === 'long' ? '#ff0000' : 'rgba(0,255,0,0.4)',
+            color: state.side === 'long' ? '#ff0000' : 'text.secondary',
             '&.Mui-selected': { bgcolor: 'rgba(255,0,0,0.15)', color: '#ff0000' },
           }}>
             Long
           </ToggleButton>
           <ToggleButton value="short" sx={{
             fontSize: '0.65rem', py: 0.25,
-            color: state.side === 'short' ? '#0000ff' : 'rgba(0,255,0,0.4)',
+            color: state.side === 'short' ? '#0000ff' : 'text.secondary',
             '&.Mui-selected': { bgcolor: 'rgba(0,0,255,0.15)', color: '#4444ff' },
           }}>
             Short
@@ -143,7 +143,7 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
 
       {/* Order type */}
       <Box>
-        <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>Order Type</Typography>
+        <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', mb: 0.5 }}>Order Type</Typography>
         <ToggleButtonGroup
           value={state.orderType}
           exclusive
@@ -159,7 +159,7 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
       {/* Limit price */}
       {state.orderType === 'limit' && (
         <Box>
-          <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>Price</Typography>
+          <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', mb: 0.5 }}>Price</Typography>
           <TextField
             fullWidth
             size="small"
@@ -174,8 +174,8 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
       {/* Leverage slider */}
       <Box>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)' }}>Leverage</Typography>
-          <Typography sx={{ fontSize: '0.65rem', color: '#00ff00', fontWeight: 700 }}>{state.leverage}x</Typography>
+          <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary' }}>Leverage</Typography>
+          <Typography sx={{ fontSize: '0.65rem', color: 'primary.main', fontWeight: 700 }}>{state.leverage}x</Typography>
         </Box>
         <Box sx={{ px: 1, py: 0.25, overflowX: 'hidden' }}>
           <Slider
@@ -186,12 +186,12 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
             step={1}
             size="small"
             sx={{
-            color: '#00ff00',
+            color: 'primary.main',
             '& .MuiSlider-thumb': {
               width: 12, height: 12,
               '&::after': { width: 20, height: 20 },
-              '&:hover, &.Mui-focusVisible': { boxShadow: '0 0 0 4px rgba(0,255,0,0.16)' },
-              '&.Mui-active': { boxShadow: '0 0 0 6px rgba(0,255,0,0.16)' },
+              '&:hover, &.Mui-focusVisible': { boxShadow: 'none' },
+              '&.Mui-active': { boxShadow: 'none' },
             },
           }}
           />
@@ -201,7 +201,7 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
       {/* Size input */}
       <Box>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-          <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)' }}>Size (USD)</Typography>
+          <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary' }}>Size (USD)</Typography>
           <Button size="small" onClick={() => onChange({ size: 'MAX' })} sx={{ fontSize: '0.5rem', minWidth: 'auto', px: 0.5 }}>
             Max
           </Button>
@@ -217,8 +217,8 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
       </Box>
 
       {/* Order info */}
-      <Box sx={{ p: 0.75, bgcolor: 'rgba(0,255,0,0.04)', borderRadius: '2px', border: '1px solid rgba(0,255,0,0.06)' }}>
-        <Typography sx={{ fontSize: '0.5rem', color: 'rgba(0,255,0,0.4)' }}>
+      <Box sx={{ p: 0.75, bgcolor: 'action.hover', borderRadius: '2px', border: 1, borderColor: 'divider' }}>
+        <Typography sx={{ fontSize: '0.5rem', color: 'text.secondary' }}>
           Margin: ${state.size ? (parseFloat(state.size) / state.leverage).toFixed(2) : '0.00'} |
           Fee: ~${state.size ? (parseFloat(state.size) * 0.0006).toFixed(2) : '0.00'} |
           Liq. price: —
@@ -243,7 +243,7 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
       {/* Funding rates */}
       {protocolFunding.length > 0 && (
         <Box sx={{ mt: 1 }}>
-          <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', textTransform: 'uppercase', mb: 0.5 }}>
+          <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', textTransform: 'uppercase', mb: 0.5 }}>
             Funding Rates
           </Typography>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -254,8 +254,8 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
                 size="small"
                 sx={{
                   height: 18, fontSize: '0.5rem',
-                  bgcolor: parseFloat(f.rate) >= 0 ? 'rgba(0,255,0,0.08)' : 'rgba(255,0,0,0.08)',
-                  color: parseFloat(f.rate) >= 0 ? '#00ff00' : '#ff0000',
+                  bgcolor: parseFloat(f.rate) >= 0 ? 'action.hover' : 'rgba(255,0,0,0.08)',
+                  color: parseFloat(f.rate) >= 0 ? 'primary.main' : 'error.main',
                 }}
               />
             ))}
@@ -266,7 +266,7 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
       {/* Open positions */}
       {positions.length > 0 && (
         <Box sx={{ mt: 1 }}>
-          <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', textTransform: 'uppercase', mb: 0.5 }}>
+          <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', textTransform: 'uppercase', mb: 0.5 }}>
             Open Positions
           </Typography>
           <TableContainer>

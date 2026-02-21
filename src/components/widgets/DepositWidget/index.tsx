@@ -40,7 +40,7 @@ export default function DepositWidget() {
 
   return (
     <Box sx={{ p: 1, height: '100%', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-      <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)', textTransform: 'uppercase' }}>
+      <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', textTransform: 'uppercase' }}>
         Deposit Address
       </Typography>
 
@@ -54,7 +54,7 @@ export default function DepositWidget() {
 
       {entry && (
         <Box sx={{ mt: 1 }}>
-          <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>Address</Typography>
+          <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary', mb: 0.5 }}>Address</Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <Typography sx={{ fontSize: '0.65rem', wordBreak: 'break-all', flex: 1 }}>
               {entry.address}
@@ -67,7 +67,7 @@ export default function DepositWidget() {
           </Box>
           {entry.memo && (
             <Box sx={{ mt: 1 }}>
-              <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>Memo / Tag</Typography>
+              <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary', mb: 0.5 }}>Memo / Tag</Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <Typography sx={{ fontSize: '0.65rem', flex: 1 }}>{entry.memo}</Typography>
                 <Tooltip title="Copy">

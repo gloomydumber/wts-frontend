@@ -138,14 +138,14 @@ export default function MarginTab({ metadata, state, onChange }: MarginTabProps)
       )}
 
       {/* Info display */}
-      <Box sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)' }}>
+      <Box sx={{ fontSize: '0.6rem', color: 'text.secondary' }}>
         {action === 'borrow' && priceIndex && (
-          <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)' }}>
+          <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary' }}>
             Price Index: {priceIndex.toLocaleString('en-US')} {quoteAsset} (mock)
           </Typography>
         )}
         {action === 'repay' && (
-          <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)' }}>
+          <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary' }}>
             Outstanding: 0.2500 {baseAsset} + 0.0012 interest (mock)
           </Typography>
         )}

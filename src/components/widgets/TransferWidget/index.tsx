@@ -18,7 +18,7 @@ export default function TransferWidget() {
 
   return (
     <Box sx={{ p: 1, height: '100%', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-      <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)', textTransform: 'uppercase' }}>
+      <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', textTransform: 'uppercase' }}>
         Cross-Exchange Transfer
       </Typography>
 

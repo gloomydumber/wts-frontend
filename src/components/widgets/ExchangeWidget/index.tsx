@@ -110,8 +110,8 @@ export default function ExchangeWidget() {
               px: 1,
               minWidth: 'auto',
               fontSize: '0.65rem',
-              color: EXCHANGE_COLORS[ex.id] ?? 'rgba(0,255,0,0.4)',
-              '&.Mui-selected': { color: EXCHANGE_COLORS[ex.id] ?? '#00ff00' },
+              color: EXCHANGE_COLORS[ex.id] ?? 'text.secondary',
+              '&.Mui-selected': { color: EXCHANGE_COLORS[ex.id] ?? 'primary.main' },
             }}
           />
         ))}
@@ -156,19 +156,19 @@ function LoadingView({ exchangeLabel, progress }: {
 
   return (
     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, p: 3 }}>
-      <Typography sx={{ fontSize: '0.7rem', color: 'rgba(0,255,0,0.6)' }}>
+      <Typography sx={{ fontSize: '0.7rem', color: 'text.secondary' }}>
         Loading {exchangeLabel} metadata...
       </Typography>
       <Box sx={{ width: '60%' }}>
         <LinearProgress variant="determinate" value={pct} sx={{
           height: 4,
           borderRadius: 2,
-          bgcolor: 'rgba(0,255,0,0.08)',
-          '& .MuiLinearProgress-bar': { bgcolor: '#00ff00' },
+          bgcolor: 'action.hover',
+          '& .MuiLinearProgress-bar': { bgcolor: 'primary.main' },
         }} />
       </Box>
       {progress && (
-        <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)' }}>
+        <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary' }}>
           {progress.loaded}/{progress.total}
         </Typography>
       )}
@@ -208,13 +208,13 @@ function WidgetBody({ exchange, metadata, exchangePairs, pair, opTab, availableT
         <BalanceTab exchange={exchange} />
       </Box>
 
-      <Divider orientation="vertical" flexItem sx={{ borderColor: 'rgba(0,255,0,0.12)' }} />
+      <Divider orientation="vertical" flexItem sx={{ borderColor: 'divider' }} />
 
       {/* Column 2: Asset selector + Order — always visible */}
       <Box sx={{ flex: '3 1 0', minWidth: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         {/* Asset / Pair selector */}
-        <Box sx={{ p: 1, borderBottom: '1px solid rgba(0,255,0,0.12)' }}>
-          <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', textTransform: 'uppercase', mb: 0.5 }}>
+        <Box sx={{ p: 1, borderBottom: 1, borderColor: 'divider' }}>
+          <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', textTransform: 'uppercase', mb: 0.5 }}>
             Asset
           </Typography>
           <Autocomplete
@@ -242,7 +242,7 @@ function WidgetBody({ exchange, metadata, exchangePairs, pair, opTab, availableT
         </Box>
       </Box>
 
-      <Divider orientation="vertical" flexItem sx={{ borderColor: 'rgba(0,255,0,0.12)' }} />
+      <Divider orientation="vertical" flexItem sx={{ borderColor: 'divider' }} />
 
       {/* Column 3: Deposit / Withdraw / Transfer / Margin tabs */}
       <Box sx={{ flex: '4 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

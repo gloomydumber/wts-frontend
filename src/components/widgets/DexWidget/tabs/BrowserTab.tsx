@@ -4,16 +4,16 @@ import LanguageIcon from '@mui/icons-material/Language'
 export default function BrowserTab() {
   return (
     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, p: 3 }}>
-      <LanguageIcon sx={{ fontSize: 40, color: 'rgba(0,255,0,0.15)' }} />
-      <Typography sx={{ fontSize: '0.8rem', color: '#00ff00', fontWeight: 700 }}>
+      <LanguageIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+      <Typography sx={{ fontSize: '0.8rem', color: 'primary.main', fontWeight: 700 }}>
         Embedded DApp Browser
       </Typography>
-      <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)', textAlign: 'center', maxWidth: 320, lineHeight: 1.6 }}>
+      <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', textAlign: 'center', maxWidth: 320, lineHeight: 1.6 }}>
         Phase 2 — Requires Tauri WebView integration for secure DApp browsing.
       </Typography>
 
-      <Box sx={{ p: 1.5, bgcolor: 'rgba(0,255,0,0.04)', border: '1px solid rgba(0,255,0,0.08)', borderRadius: '2px', maxWidth: 320 }}>
-        <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)', fontWeight: 700, mb: 0.5, textTransform: 'uppercase' }}>
+      <Box sx={{ p: 1.5, bgcolor: 'action.hover', border: 1, borderColor: 'divider', borderRadius: '2px', maxWidth: 320 }}>
+        <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary', fontWeight: 700, mb: 0.5, textTransform: 'uppercase' }}>
           Planned Features
         </Typography>
         {[
@@ -23,7 +23,7 @@ export default function BrowserTab() {
           'Bookmark favorite DApps',
           'Network switching via wallet_switchEthereumChain',
         ].map((feature) => (
-          <Typography key={feature} sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.3)', py: 0.25 }}>
+          <Typography key={feature} sx={{ fontSize: '0.55rem', color: 'text.disabled', py: 0.25 }}>
             - {feature}
           </Typography>
         ))}

@@ -33,14 +33,14 @@ function SensitiveText({ text, fontSize = '0.5rem' }: { text: string; fontSize?:
       }}
       sx={{
         fontSize,
-        color: '#ffff00',
+        color: 'warning.main',
         fontFamily: 'monospace',
         wordBreak: 'break-all',
         cursor: 'pointer',
         filter: revealed ? 'none' : 'blur(4px)',
         transition: 'filter 0.2s',
         userSelect: revealed ? 'text' : 'none',
-        '&:hover': { color: '#00ff00' },
+        '&:hover': { color: 'primary.main' },
       }}
     >
       {text}
@@ -105,7 +105,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
         <Tabs
           value={section}
           onChange={(_, v) => setSection(v)}
-          sx={{ minHeight: 32, px: 2, borderBottom: '1px solid rgba(0,255,0,0.08)' }}
+          sx={{ minHeight: 32, px: 2, borderBottom: 1, borderColor: 'divider' }}
         >
           <Tab value="rpc" label="RPC Endpoints" sx={{ minHeight: 32, fontSize: '0.6rem' }} />
           <Tab value="swap" label="Swap Settings" sx={{ minHeight: 32, fontSize: '0.6rem' }} />
@@ -138,7 +138,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {/* Slippage */}
               <Box>
-                <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>Default Slippage</Typography>
+                <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary', mb: 0.5 }}>Default Slippage</Typography>
                 <ToggleButtonGroup
                   value={settings.defaultSlippageBps}
                   exclusive
@@ -150,7 +150,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
                   <ToggleButton value={100} sx={{ fontSize: '0.6rem', px: 1 }}>1.0%</ToggleButton>
                 </ToggleButtonGroup>
                 <Box sx={{ mt: 1 }}>
-                  <Typography sx={{ fontSize: '0.5rem', color: 'rgba(0,255,0,0.3)', mb: 0.25 }}>Custom (bps)</Typography>
+                  <Typography sx={{ fontSize: '0.5rem', color: 'text.disabled', mb: 0.25 }}>Custom (bps)</Typography>
                   <TextField
                     size="small"
                     type="number"
@@ -163,7 +163,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
 
               {/* Gas priority */}
               <Box>
-                <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>Gas Priority</Typography>
+                <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary', mb: 0.5 }}>Gas Priority</Typography>
                 <Select
                   value={settings.gasPriority}
                   onChange={(e) => setSettings((prev) => ({ ...prev, gasPriority: e.target.value as 'low' | 'medium' | 'high' }))}
@@ -181,7 +181,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
           {section === 'wallet' && (() => {
             if (!activeWallet) {
               return (
-                <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)', textAlign: 'center', mt: 4 }}>
+                <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', textAlign: 'center', mt: 4 }}>
                   No wallet selected. Create or import a wallet first.
                 </Typography>
               )
@@ -215,18 +215,18 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
             return (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
               {/* Active wallet label */}
-              <Typography sx={{ fontSize: '0.6rem', color: '#00ff00', fontWeight: 700 }}>
+              <Typography sx={{ fontSize: '0.6rem', color: 'primary.main', fontWeight: 700 }}>
                 {activeWallet.label}
               </Typography>
 
               {/* Account list — fixed-height scrollable area */}
               <Box>
-                <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>
+                <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary', mb: 0.5 }}>
                   Accounts ({activeAccounts.length}{hiddenAccounts.length > 0 ? `, ${hiddenAccounts.length} hidden` : ''})
                 </Typography>
                 <Box sx={{ maxHeight: 240, overflow: 'auto' }}>
                   {activeAccounts.map((acc) => (
-                    <Box key={acc.index} sx={{ p: 0.5, mb: 0.5, bgcolor: 'rgba(0,255,0,0.04)', borderRadius: '2px' }}>
+                    <Box key={acc.index} sx={{ p: 0.5, mb: 0.5, bgcolor: 'action.hover', borderRadius: '2px' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Typography sx={{ fontSize: '0.6rem', fontWeight: 700 }}>{acc.label}</Typography>
                         <Box sx={{ display: 'flex', gap: 0.25 }}>
@@ -251,17 +251,17 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
                           )}
                         </Box>
                       </Box>
-                      <Typography sx={{ fontSize: '0.5rem', color: 'rgba(0,255,0,0.4)' }}>
+                      <Typography sx={{ fontSize: '0.5rem', color: 'text.secondary' }}>
                         EVM: {acc.evmAddress.slice(0, 10)}...{acc.evmAddress.slice(-6)}
                       </Typography>
-                      <Typography sx={{ fontSize: '0.5rem', color: 'rgba(0,255,0,0.4)' }}>
+                      <Typography sx={{ fontSize: '0.5rem', color: 'text.secondary' }}>
                         SOL: {acc.solanaAddress.slice(0, 8)}...{acc.solanaAddress.slice(-6)}
                       </Typography>
                       {exportedKeyIdx === acc.index && exportedKeys && (
-                        <Box sx={{ mt: 0.5, p: 0.5, bgcolor: 'rgba(255,255,0,0.06)', border: '1px solid rgba(255,255,0,0.15)', borderRadius: '2px' }}>
-                          <Typography sx={{ fontSize: '0.5rem', color: 'rgba(255,255,0,0.6)', mb: 0.25 }}>EVM Private Key:</Typography>
+                        <Box sx={{ mt: 0.5, p: 0.5, bgcolor: (t) => t.palette.mode === 'dark' ? 'rgba(255,255,0,0.06)' : 'rgba(237,108,2,0.06)', border: 1, borderColor: (t) => t.palette.mode === 'dark' ? 'rgba(255,255,0,0.15)' : 'rgba(237,108,2,0.15)', borderRadius: '2px' }}>
+                          <Typography sx={{ fontSize: '0.5rem', color: 'warning.main', mb: 0.25 }}>EVM Private Key:</Typography>
                           <SensitiveText text={exportedKeys.evmPrivateKey} />
-                          <Typography sx={{ fontSize: '0.5rem', color: 'rgba(255,255,0,0.6)', mt: 0.5, mb: 0.25 }}>Solana Private Key:</Typography>
+                          <Typography sx={{ fontSize: '0.5rem', color: 'warning.main', mt: 0.5, mb: 0.25 }}>Solana Private Key:</Typography>
                           <SensitiveText text={exportedKeys.solanaPrivateKey} />
                         </Box>
                       )}
@@ -284,7 +284,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
                               Restore
                             </Button>
                           </Box>
-                          <Typography sx={{ fontSize: '0.5rem', color: 'rgba(0,255,0,0.3)' }}>
+                          <Typography sx={{ fontSize: '0.5rem', color: 'text.disabled' }}>
                             EVM: {acc.evmAddress.slice(0, 10)}...{acc.evmAddress.slice(-6)}
                           </Typography>
                         </Box>
@@ -308,7 +308,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
 
               {/* Mnemonic — renders below buttons */}
               {showMnemonic && mnemonic && (
-                <Box sx={{ p: 1, bgcolor: 'rgba(255,255,0,0.06)', border: '1px solid rgba(255,255,0,0.15)', borderRadius: '2px' }}>
+                <Box sx={{ p: 1, bgcolor: (t) => t.palette.mode === 'dark' ? 'rgba(255,255,0,0.06)' : 'rgba(237,108,2,0.06)', border: 1, borderColor: (t) => t.palette.mode === 'dark' ? 'rgba(255,255,0,0.15)' : 'rgba(237,108,2,0.15)', borderRadius: '2px' }}>
                   <SensitiveText text={mnemonic} fontSize="0.6rem" />
                 </Box>
               )}

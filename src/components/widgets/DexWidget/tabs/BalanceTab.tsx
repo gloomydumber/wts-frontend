@@ -40,7 +40,7 @@ export default function BalanceTab({ chain, metadata, walletState }: {
   if (!walletState.initialized) {
     return (
       <Box sx={{ p: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-        <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)' }}>
+        <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>
           Create wallet to view balances
         </Typography>
       </Box>
@@ -54,14 +54,14 @@ export default function BalanceTab({ chain, metadata, walletState }: {
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1, py: 0.5 }}>
-        <Typography sx={{ fontSize: '0.6rem', color: 'rgba(0,255,0,0.4)', textTransform: 'uppercase', fontWeight: 700 }}>
+        <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary', textTransform: 'uppercase', fontWeight: 700 }}>
           Balance — {chain.label}
         </Typography>
         <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <IconButton size="small" onClick={() => setAddTokenOpen(true)} sx={{ color: 'rgba(0,255,0,0.4)' }}>
+          <IconButton size="small" onClick={() => setAddTokenOpen(true)} sx={{ color: 'text.secondary' }}>
             <AddIcon sx={{ fontSize: 14 }} />
           </IconButton>
-          <IconButton size="small" sx={{ color: 'rgba(0,255,0,0.4)' }}>
+          <IconButton size="small" sx={{ color: 'text.secondary' }}>
             <RefreshIcon sx={{ fontSize: 14 }} />
           </IconButton>
         </Box>
@@ -79,7 +79,7 @@ export default function BalanceTab({ chain, metadata, walletState }: {
           <TableBody>
             {balances.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3} sx={{ textAlign: 'center', color: 'rgba(0,255,0,0.4)' }}>
+                <TableCell colSpan={3} sx={{ textAlign: 'center', color: 'text.secondary' }}>
                   No tokens found
                 </TableCell>
               </TableRow>
@@ -89,7 +89,7 @@ export default function BalanceTab({ chain, metadata, walletState }: {
                   <TableCell sx={{ fontWeight: 700 }}>
                     {row.token.symbol}
                     {row.token.address === 'native' && (
-                      <Box component="span" sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.3)', ml: 0.5 }}>(N)</Box>
+                      <Box component="span" sx={{ fontSize: '0.55rem', color: 'text.disabled', ml: 0.5 }}>(N)</Box>
                     )}
                   </TableCell>
                   <TableCell align="right">
@@ -102,8 +102,8 @@ export default function BalanceTab({ chain, metadata, walletState }: {
                       }}
                       sx={{
                         cursor: 'pointer',
-                        color: copiedIdx === idx ? '#00ff00' : 'inherit',
-                        '&:hover': { color: '#00ff00' },
+                        color: copiedIdx === idx ? 'primary.main' : 'inherit',
+                        '&:hover': { color: 'primary.main' },
                         transition: 'color 0.15s',
                       }}
                     >
@@ -142,7 +142,7 @@ export default function BalanceTab({ chain, metadata, walletState }: {
             sx={{ mt: 1 }}
             slotProps={{ htmlInput: { style: { fontSize: '0.7rem' } } }}
           />
-          <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', mt: 1 }}>
+          <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', mt: 1 }}>
             Token metadata will be fetched automatically in Phase 2.
           </Typography>
         </DialogContent>

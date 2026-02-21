@@ -67,13 +67,13 @@ export default function SwapTab({ chain, metadata, walletState, state, onChange 
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,255,0,0.4)', textTransform: 'uppercase', fontWeight: 700 }}>
+      <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', textTransform: 'uppercase', fontWeight: 700 }}>
         Swap — {chain.label}
       </Typography>
 
       {/* Token In */}
       <Box>
-        <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>From</Typography>
+        <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', mb: 0.5 }}>From</Typography>
         <Box sx={{ display: 'flex', gap: 0.5 }}>
           <Select
             value={state.tokenIn}
@@ -100,14 +100,14 @@ export default function SwapTab({ chain, metadata, walletState, state, onChange 
 
       {/* Flip button */}
       <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-        <IconButton size="small" onClick={handleFlip} sx={{ color: 'rgba(0,255,0,0.4)', '&:hover': { color: '#00ff00' } }}>
+        <IconButton size="small" onClick={handleFlip} sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}>
           <SwapVertIcon sx={{ fontSize: 18 }} />
         </IconButton>
       </Box>
 
       {/* Token Out */}
       <Box>
-        <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', mb: 0.5 }}>To</Typography>
+        <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', mb: 0.5 }}>To</Typography>
         <Box sx={{ display: 'flex', gap: 0.5 }}>
           <Select
             value={effectiveTokenOut}
@@ -135,10 +135,10 @@ export default function SwapTab({ chain, metadata, walletState, state, onChange 
       {routes.length > 0 && (
         <>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', textTransform: 'uppercase' }}>
+            <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', textTransform: 'uppercase' }}>
               Routes ({routes.length})
             </Typography>
-            <Typography sx={{ fontSize: '0.5rem', color: 'rgba(0,255,0,0.3)' }}>
+            <Typography sx={{ fontSize: '0.5rem', color: 'text.disabled' }}>
               Refresh in {quoteTimer}s
             </Typography>
           </Box>
@@ -166,14 +166,14 @@ export default function SwapTab({ chain, metadata, walletState, state, onChange 
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                         {route.aggregatorName}
                         {route.isBest && (
-                          <Chip label="BEST" size="small" sx={{ height: 14, fontSize: '0.45rem', bgcolor: 'rgba(0,255,0,0.15)', color: '#00ff00' }} />
+                          <Chip label="BEST" size="small" sx={{ height: 14, fontSize: '0.45rem', bgcolor: 'action.selected', color: 'primary.main' }} />
                         )}
                       </Box>
                     </TableCell>
                     <TableCell align="right">{parseFloat(route.estimatedOutput).toFixed(4)}</TableCell>
                     <TableCell align="right">${route.estimatedGasUsd.toFixed(2)}</TableCell>
                     <TableCell align="right" sx={{
-                      color: route.priceImpact > 5 ? '#ff0000' : route.priceImpact > 1 ? '#ffff00' : 'inherit',
+                      color: route.priceImpact > 5 ? 'error.main' : route.priceImpact > 1 ? 'warning.main' : 'inherit',
                     }}>
                       {route.priceImpact.toFixed(2)}%
                     </TableCell>
@@ -185,13 +185,13 @@ export default function SwapTab({ chain, metadata, walletState, state, onChange 
 
           {/* Selected route path */}
           {selectedRoute && (
-            <Box sx={{ p: 0.75, bgcolor: 'rgba(0,255,0,0.04)', borderRadius: '2px', border: '1px solid rgba(0,255,0,0.06)' }}>
-              <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,255,0,0.4)', mb: 0.25 }}>Route Path</Typography>
-              <Typography sx={{ fontSize: '0.6rem', color: '#00ff00' }}>
+            <Box sx={{ p: 0.75, bgcolor: 'action.hover', borderRadius: '2px', border: 1, borderColor: 'divider' }}>
+              <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', mb: 0.25 }}>Route Path</Typography>
+              <Typography sx={{ fontSize: '0.6rem', color: 'primary.main' }}>
                 {tokenInInfo?.symbol ?? state.tokenIn} {selectedRoute.path.length > 2 ? `\u2192 ${selectedRoute.path.slice(1, -1).join(' \u2192 ')} ` : ''}{'\u2192'} {tokenOutInfo?.symbol ?? state.tokenOut}
                 {' '}({selectedRoute.protocols.join(', ')})
               </Typography>
-              <Typography sx={{ fontSize: '0.5rem', color: 'rgba(0,255,0,0.3)', mt: 0.25 }}>
+              <Typography sx={{ fontSize: '0.5rem', color: 'text.disabled', mt: 0.25 }}>
                 Min output: {selectedRoute.minimumOutput} | Est. time: ~{selectedRoute.estimatedTime}s
               </Typography>
             </Box>
@@ -201,12 +201,13 @@ export default function SwapTab({ chain, metadata, walletState, state, onChange 
           {selectedRoute && selectedRoute.priceImpact > 1 && (
             <Box sx={{
               p: 0.75, borderRadius: '2px',
-              bgcolor: selectedRoute.priceImpact > 5 ? 'rgba(255,0,0,0.08)' : 'rgba(255,255,0,0.08)',
-              border: `1px solid ${selectedRoute.priceImpact > 5 ? 'rgba(255,0,0,0.2)' : 'rgba(255,255,0,0.2)'}`,
+              bgcolor: (t) => selectedRoute.priceImpact > 5 ? 'rgba(255,0,0,0.08)' : t.palette.mode === 'dark' ? 'rgba(255,255,0,0.08)' : 'rgba(237,108,2,0.08)',
+              border: 1,
+              borderColor: (t) => selectedRoute.priceImpact > 5 ? 'rgba(255,0,0,0.2)' : t.palette.mode === 'dark' ? 'rgba(255,255,0,0.2)' : 'rgba(237,108,2,0.2)',
             }}>
               <Typography sx={{
                 fontSize: '0.55rem',
-                color: selectedRoute.priceImpact > 5 ? '#ff0000' : '#ffff00',
+                color: selectedRoute.priceImpact > 5 ? 'error.main' : 'warning.main',
               }}>
                 {selectedRoute.priceImpact > 5 ? 'High' : 'Moderate'} price impact: {selectedRoute.priceImpact.toFixed(2)}%
               </Typography>

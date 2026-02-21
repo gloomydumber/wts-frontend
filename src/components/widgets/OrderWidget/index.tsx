@@ -121,7 +121,7 @@ export default function OrderWidget() {
       />
 
       {/* Total */}
-      <Typography sx={{ fontSize: '0.7rem', color: 'rgba(0,255,0,0.4)', textAlign: 'right' }}>
+      <Typography sx={{ fontSize: '0.7rem', color: 'text.secondary', textAlign: 'right' }}>
         Total: {total} {pair.split('/')[1]}
       </Typography>
 
