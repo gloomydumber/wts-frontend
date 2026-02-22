@@ -17,7 +17,7 @@ const OP_LABELS: Record<OperationTab, string> = {
   margin: 'Margin',
 }
 
-export default function ExchangeWidget() {
+export default function CexWidget() {
   const [exchangeIdx, setExchangeIdx] = useState(0)
   const [opTabs, setOpTabs] = useState<Record<string, OperationTab>>({})
   const [pairs, setPairs] = useState<Record<string, string>>({})

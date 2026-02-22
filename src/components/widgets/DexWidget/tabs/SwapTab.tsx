@@ -19,6 +19,7 @@ import SwapVertIcon from '@mui/icons-material/SwapVert'
 import type { ChainConfig, WalletState, SwapTabState, SwapRoute } from '../types'
 import type { DexChainMetadata } from '../preload'
 import { mockSwapRoutes } from '../mockData'
+import { log } from '../../../../services/logger'
 
 /**
  * "Refresh in Xs" countdown — auto-refreshes swap quotes every 15 s
@@ -238,6 +239,15 @@ export default function SwapTab({ chain, metadata, walletState, state, onChange 
         size="small"
         disabled={routes.length === 0 || !walletState.initialized}
         sx={{ fontSize: '0.7rem', textTransform: 'none', mt: 0.5 }}
+        onClick={() => {
+          // Phase 2: replace mockTxHash with actual RPC response txHash
+          const mockTxHash = `0x${crypto.randomUUID().replace(/-/g, '')}${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
+          log({
+            level: 'SUCCESS', category: 'SWAP', source: chain.id,
+            message: `[${chain.label}] Swap ${state.amountIn} ${tokenInInfo?.symbol ?? '?'} → ${selectedRoute?.estimatedOutput ?? '?'} ${tokenOutInfo?.symbol ?? '?'} via ${selectedRoute?.aggregatorName ?? '?'} | tx: ${mockTxHash.slice(0, 10)}...${mockTxHash.slice(-6)}`,
+            data: { chain: chain.label, tokenIn: state.tokenIn, tokenOut: effectiveTokenOut, amountIn: state.amountIn, route: selectedRoute?.aggregatorName, output: selectedRoute?.estimatedOutput, txHash: mockTxHash },
+          })
+        }}
       >
         {!walletState.initialized ? 'Connect Wallet' : 'Swap (Mock)'}
       </Button>

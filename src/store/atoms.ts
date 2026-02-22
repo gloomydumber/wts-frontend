@@ -4,27 +4,6 @@ import type { Layouts } from 'react-grid-layout'
 import { defaultLayouts, WIDGET_REGISTRY } from '../layout/defaults'
 import type { DexWalletsState, DexSettings } from '../components/widgets/DexWidget/types'
 
-// Migration: rename Arbitrage → PremiumTable in persisted localStorage data
-function migrateArbitrageToPremiumTable() {
-  try {
-    const layoutsRaw = localStorage.getItem('layouts')
-    if (layoutsRaw) {
-      const replaced = layoutsRaw.replace(/"i"\s*:\s*"Arbitrage"/g, '"i":"PremiumTable"')
-      if (replaced !== layoutsRaw) localStorage.setItem('layouts', replaced)
-    }
-    const visRaw = localStorage.getItem('widgetVisibility')
-    if (visRaw) {
-      const vis = JSON.parse(visRaw) as Record<string, boolean>
-      if ('Arbitrage' in vis) {
-        vis['PremiumTable'] = vis['Arbitrage']
-        delete vis['Arbitrage']
-        localStorage.setItem('widgetVisibility', JSON.stringify(vis))
-      }
-    }
-  } catch { /* ignore migration errors */ }
-}
-migrateArbitrageToPremiumTable()
-
 // Layout state — persisted to localStorage
 export const layoutsAtom = atomWithStorage<Layouts>('layouts', defaultLayouts)
 
@@ -48,47 +27,7 @@ export const isDarkAtom = atomWithStorage<boolean>('isDark', true)
 // Replaces old dexWalletAtom + dexMnemonicAtom
 const dexWalletsDefault: DexWalletsState = { wallets: [], activeWalletId: '' }
 
-// Migration: convert old single-wallet localStorage keys to new multi-wallet format
-function migrateOldWalletData(): DexWalletsState | null {
-  try {
-    const oldWalletRaw = localStorage.getItem('dexWallet')
-    const oldMnemonicRaw = localStorage.getItem('dexMnemonic')
-    if (!oldWalletRaw || !oldMnemonicRaw) return null
-    const oldWallet = JSON.parse(oldWalletRaw)
-    const oldMnemonic = JSON.parse(oldMnemonicRaw) as string
-    if (!oldWallet?.initialized || !oldMnemonic) return null
-
-    const id = crypto.randomUUID()
-    const migrated: DexWalletsState = {
-      wallets: [{
-        id,
-        label: 'Wallet 1',
-        mnemonic: oldMnemonic,
-        accounts: oldWallet.accounts ?? [],
-        activeAccountIndex: oldWallet.activeAccountIndex ?? 0,
-        excludedIndices: oldWallet.excludedIndices ?? [],
-      }],
-      activeWalletId: id,
-    }
-    // Persist migrated data and remove old keys
-    localStorage.setItem('dexWallets', JSON.stringify(migrated))
-    localStorage.removeItem('dexWallet')
-    localStorage.removeItem('dexMnemonic')
-    return migrated
-  } catch {
-    return null
-  }
-}
-
-function getDexWalletsInit(): DexWalletsState {
-  const existing = localStorage.getItem('dexWallets')
-  if (existing) {
-    try { return JSON.parse(existing) } catch { /* fall through */ }
-  }
-  return migrateOldWalletData() ?? dexWalletsDefault
-}
-
-export const dexWalletsAtom = atomWithStorage<DexWalletsState>('dexWallets', getDexWalletsInit())
+export const dexWalletsAtom = atomWithStorage<DexWalletsState>('dexWallets', dexWalletsDefault)
 
 // DEX settings — persisted to localStorage
 export const dexSettingsAtom = atomWithStorage<DexSettings>('dexSettings', {

@@ -2,6 +2,7 @@ import { Box, TextField, Autocomplete, Button, Typography, ToggleButtonGroup, To
 import type { ExchangeConfig } from '../types'
 import type { ExchangeMetadata } from '../preload'
 import { mockPriceIndex } from '../mockData'
+import { log } from '../../../../services/logger'
 
 export interface MarginState {
   action: 'borrow' | 'repay'
@@ -29,7 +30,7 @@ interface MarginTabProps {
   onChange: (update: Partial<MarginState>) => void
 }
 
-export default function MarginTab({ metadata, state, onChange }: MarginTabProps) {
+export default function MarginTab({ exchange, metadata, state, onChange }: MarginTabProps) {
   const pairs = metadata.crossMarginPairs.length > 0 ? metadata.crossMarginPairs : ['BTC/USDT']
   const action = state.action
   const pair = pairs.includes(state.pair) ? state.pair : pairs[0]
@@ -151,7 +152,18 @@ export default function MarginTab({ metadata, state, onChange }: MarginTabProps)
         )}
       </Box>
 
-      <Button variant="outlined" fullWidth sx={{ mt: 'auto', fontSize: '0.7rem' }}>
+      <Button
+        variant="outlined"
+        fullWidth
+        sx={{ mt: 'auto', fontSize: '0.7rem' }}
+        onClick={() => {
+          log({
+            level: 'INFO', category: 'MARGIN', source: exchange.id,
+            message: `[${exchange.label}] ${action === 'borrow' ? 'Borrow' : 'Repay'} ${amount || '0'} ${baseAsset} — ${pair}`,
+            data: { exchange: exchange.label, action, pair, amount, ...(action === 'borrow' ? { collateral } : {}) },
+          })
+        }}
+      >
         {action === 'borrow' ? 'Borrow' : 'Repay'} (Mock)
       </Button>
     </Box>

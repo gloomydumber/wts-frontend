@@ -19,6 +19,7 @@ import {
 import { CHAINS } from './types'
 import { dexSettingsAtom, dexWalletsAtom } from '../../../store/atoms'
 import { deriveAccounts, derivePrivateKeys } from './walletManager'
+import { log } from '../../../services/logger'
 
 type SettingsSection = 'rpc' | 'swap' | 'wallet'
 
@@ -63,6 +64,35 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
 
   // Mnemonic visibility
   const [showMnemonic, setShowMnemonic] = useState(false)
+
+  // Delete wallet confirmation
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+
+  const handleDeleteWallet = () => {
+    if (!activeWallet) return
+    const deletedLabel = activeWallet.label
+    const deletedId = activeWallet.id
+    // Phase 2: Before deleting, write the mnemonic and all derived private keys
+    // to the .jsonl audit log via Tauri.invoke('write_log_line', ...) so the user
+    // can recover funds if they didn't back up manually. The .jsonl file must be
+    // encrypted at rest (Tauri filesystem encryption) since it will contain secrets.
+    setWalletsState((prev) => {
+      const remaining = prev.wallets.filter(w => w.id !== deletedId)
+      const newActiveId = prev.activeWalletId === deletedId
+        ? (remaining[0]?.id ?? '')
+        : prev.activeWalletId
+      return { wallets: remaining, activeWalletId: newActiveId }
+    })
+    setDeleteConfirm(false)
+    setExportedKeyIdx(null)
+    setExportedKeys(null)
+    setShowMnemonic(false)
+    log({
+      level: 'WARN', category: 'WALLET', source: 'app',
+      message: `Wallet deleted: ${deletedLabel}`,
+      data: { walletId: deletedId },
+    })
+  }
 
   const handleRpcChange = (chainId: string, rpcUrl: string) => {
     setSettings((prev) => ({
@@ -224,7 +254,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
                 <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary', mb: 0.5 }}>
                   Accounts ({activeAccounts.length}{hiddenAccounts.length > 0 ? `, ${hiddenAccounts.length} hidden` : ''})
                 </Typography>
-                <Box sx={{ maxHeight: 240, overflow: 'auto' }}>
+                <Box sx={{ maxHeight: 200, overflow: 'auto' }}>
                   {activeAccounts.map((acc) => (
                     <Box key={acc.index} sx={{ p: 0.5, mb: 0.5, bgcolor: 'action.hover', borderRadius: '2px' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -304,7 +334,30 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
                   sx={{ fontSize: '0.55rem', textTransform: 'none' }}>
                   + Account
                 </Button>
+                <Button variant="outlined" size="small" onClick={() => setDeleteConfirm(true)}
+                  sx={{ fontSize: '0.55rem', textTransform: 'none', color: '#ff4444', borderColor: 'rgba(255,68,68,0.3)', '&:hover': { borderColor: '#ff4444', bgcolor: 'rgba(255,68,68,0.08)' }, ml: 'auto' }}>
+                  Delete Wallet
+                </Button>
               </Box>
+
+              {/* Delete wallet confirmation */}
+              {deleteConfirm && (
+                <Box sx={{ p: 1, bgcolor: 'rgba(255,0,0,0.08)', border: 1, borderColor: 'rgba(255,0,0,0.2)', borderRadius: '2px' }}>
+                  <Typography sx={{ fontSize: '0.6rem', color: '#ff4444', mb: 0.5 }}>
+                    Delete "{activeWallet.label}"? This will remove all accounts and keys. This cannot be undone.
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 0.5 }}>
+                    <Button size="small" onClick={handleDeleteWallet}
+                      sx={{ fontSize: '0.55rem', textTransform: 'none', color: '#ff4444' }}>
+                      Delete
+                    </Button>
+                    <Button size="small" onClick={() => setDeleteConfirm(false)}
+                      sx={{ fontSize: '0.55rem', textTransform: 'none' }}>
+                      Cancel
+                    </Button>
+                  </Box>
+                </Box>
+              )}
 
               {/* Mnemonic — renders below buttons */}
               {showMnemonic && mnemonic && (

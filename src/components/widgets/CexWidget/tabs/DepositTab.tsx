@@ -3,6 +3,7 @@ import { Box, Autocomplete, TextField, Typography, IconButton, Tooltip } from '@
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import type { ExchangeConfig } from '../types'
 import type { ExchangeMetadata } from '../preload'
+import { log } from '../../../../services/logger'
 
 export interface DepositState {
   asset: string
@@ -21,7 +22,7 @@ interface DepositTabProps {
   onChange: (update: Partial<DepositState>) => void
 }
 
-export default function DepositTab({ metadata, state, onChange }: DepositTabProps) {
+export default function DepositTab({ exchange, metadata, state, onChange }: DepositTabProps) {
   const depositAddresses = metadata.depositInfo
   const assets = Object.keys(depositAddresses)
   const asset = assets.includes(state.asset) ? state.asset : (assets.includes('USDT') ? 'USDT' : assets[0] || 'BTC')
@@ -35,6 +36,11 @@ export default function DepositTab({ metadata, state, onChange }: DepositTabProp
     navigator.clipboard.writeText(text)
     setCopiedField(field)
     setTimeout(() => setCopiedField(null), 1500)
+    log({
+      level: 'INFO', category: 'DEPOSIT', source: exchange.id,
+      message: `[${exchange.label}] Copied deposit ${field} — ${asset} (${network})`,
+      data: { exchange: exchange.label, asset, network, field, value: text },
+    })
   }
 
   const handleAssetChange = (a: string) => {

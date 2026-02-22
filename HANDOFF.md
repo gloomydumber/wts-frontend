@@ -2252,3 +2252,105 @@ Replaced the mock ArbitrageWidget with the real `@gloomydumber/premium-table` pa
 - localStorage migration runs once on load, converts old `Arbitrage` entries automatically
 - The package CSS is imported via `@gloomydumber/premium-table/style.css`
 - PremiumTable receives the MUI theme via `useTheme()` for dark/light mode support
+
+## Session: 2026-02-22 — Centralized Logging System for ConsoleWidget
+
+### What Was Done
+
+Implemented a centralized logging service that captures all user operations across ExchangeWidget and DexWidget, replacing ConsoleWidget's mock data with real structured log entries.
+
+### Architecture
+
+**`src/services/logger.ts`** — Plain TypeScript module (not React/Jotai). Uses pub-sub pattern:
+- Module-level `LogEntry[]` buffer with 500-entry cap (oldest evicted)
+- `log(entry)` — appends and notifies subscribers
+- `subscribe(cb)` — returns unsubscribe function
+- `getEntries()` — returns current buffer for initial render
+- Why not Jotai atom: logging is a side-effect system, not UI state. Avoids React render overhead from 500+ entries.
+
+**`LogEntry` schema:**
+```typescript
+{ id, timestamp, level, category, source, message, data? }
+```
+- `level`: INFO | WARN | ERROR | SUCCESS
+- `category`: ORDER | DEPOSIT | WITHDRAW | TRANSFER | MARGIN | SWAP | PERPS | DISPERSE | WALLET | SYSTEM
+- `source`: exchange/chain ID or 'app'
+- `data`: optional structured payload
+
+### ConsoleWidget Changes
+
+- Removed mock interval and mock messages
+- System init messages emitted at module load (not in effect — avoids lint error)
+- Initial state seeded via `useState` lazy initializer from `getEntries()`
+- Live updates via `subscribe()` in `useEffect` cleanup
+- 100-entry display cap with oldest eviction
+- Category shown as colored badge alongside level
+
+### Operation Dispatch Points Wired
+
+| Widget | Tab/Action | Category | Log content |
+|--------|------------|----------|-------------|
+| ExchangeWidget | OrderTab — Buy/Sell | ORDER | side, type, pair, qty, price |
+| ExchangeWidget | OrderTab — Sell-Only loop start/cancel | ORDER | pair, interval |
+| ExchangeWidget | DepositTab — Copy address/memo | DEPOSIT | asset, network, field |
+| ExchangeWidget | WithdrawTab — Withdraw | WITHDRAW | asset, amount, destination |
+| ExchangeWidget | TransferTab — Transfer | TRANSFER | from, to, asset, amount |
+| ExchangeWidget | TransferTab — Enable/Disable pair | TRANSFER | pair |
+| ExchangeWidget | MarginTab — Borrow/Repay | MARGIN | action, pair, amount |
+| DexWidget | SwapTab — Swap | SWAP | tokens, amount, route, mock txHash |
+| DexWidget | PerpsTab — Long/Short | PERPS | side, pair, size, leverage, mock txHash |
+| DexWidget | DisperseTab — Send All | DISPERSE | token, total, recipient count, mock txHash |
+| DexWidget | TransferTab — Send | TRANSFER | token, amount, address, mock txHash |
+| DexWidget | index — Create/Import wallet | WALLET | method, label, EVM + SOL addresses |
+| DexWidget | index — Add account | WALLET | wallet label, EVM + SOL addresses |
+| DexWidget | index — Copy address | WALLET | chain, address |
+| DexWidget | index — Delete wallet | WALLET | label |
+| System | App init (module load) | SYSTEM | 4 startup messages |
+
+All log messages include exact exchange/chain name prefix (e.g., `[Binance]`, `[Ethereum]`). On-chain operations (swap, perps, disperse, DEX send) use SUCCESS level with mock txHash.
+
+### Phase 2 Notes
+
+- **Tauri filesystem logging**: `log()` will also call `Tauri.invoke('write_log_line', { jsonl })` to append each entry as a JSON line to `.jsonl` audit files on disk
+- **ConsoleWidget scaling**: Switch to `react-virtuoso` if display cap needs to increase beyond ~200 entries
+- **Wallet delete**: Back up mnemonic/private keys to encrypted `.jsonl` before deleting wallet data
+
+### Additional Changes in This Session
+
+4. **Detailed log messages** — Exchange name (`exchange.label`) and chain name (`chain.label`) added to all log messages. Withdraw logs include destination address and memo. On-chain ops include mock txHash.
+
+5. **Wallet management logs** — Wallet create/import logs include EVM + SOL addresses. Account add emits a separate log. WalletBar address copy emits a log with chain and address.
+
+6. **Wallet delete in settings dialog** (`settingsDialog.tsx`) — Added "Delete Wallet" button with inline confirmation UI. Handler removes wallet from Jotai state and emits WALLET log. Phase 2 comment: back up mnemonic/private keys before delete.
+
+7. **Settings dialog account list height** — Reduced `maxHeight` from 240 to 200 to prevent nested scrollbar when delete confirmation is visible.
+
+8. **Renamed ExchangeWidget → CexWidget** — Directory renamed from `ExchangeWidget/` to `CexWidget/`. Function renamed to `CexWidget`. Widget key changed from `'Exchange'` to `'Cex'` in widget registry, all layout breakpoints, and component map. Updated `CLAUDE.md` references.
+
+9. **Removed all localStorage migration logic** (`atoms.ts`) — Deleted `migrateOldWalletData()`, `getDexWalletsInit()`, `migrateArbitrageToPremiumTable()`, and `migrateExchangeToCex()`. App is under development; users can clear localStorage manually.
+
+10. **DEX widget default visible** — Changed `defaultVisible: false` → `true` in widget registry. Added Dex layout items to all 5 breakpoints with same dimensions as Cex.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/services/logger.ts` | **NEW** — LogEntry type, log service, pub-sub, Phase 2 Tauri comment |
+| `src/components/widgets/ConsoleWidget/index.tsx` | Replace mock data with logger subscription |
+| `src/components/widgets/CexWidget/tabs/OrderTab.tsx` | Add `log()` on buy/sell/loop with `[exchange.label]` prefix |
+| `src/components/widgets/CexWidget/tabs/DepositTab.tsx` | Add `log()` on copy address, added `exchange` prop |
+| `src/components/widgets/CexWidget/tabs/WithdrawTab.tsx` | Add `log()` on withdraw with address/memo details |
+| `src/components/widgets/CexWidget/tabs/TransferTab.tsx` | Add `log()` on transfer, enable/disable pair |
+| `src/components/widgets/CexWidget/tabs/MarginTab.tsx` | Add `log()` on borrow/repay, added `exchange` prop |
+| `src/components/widgets/DexWidget/tabs/SwapTab.tsx` | Add `log()` on swap (SUCCESS + mock txHash) |
+| `src/components/widgets/DexWidget/tabs/PerpsTab.tsx` | Add `log()` on long/short (SUCCESS + mock txHash) |
+| `src/components/widgets/DexWidget/tabs/DisperseTab.tsx` | Add `log()` on send all (SUCCESS + mock txHash) |
+| `src/components/widgets/DexWidget/tabs/TransferTab.tsx` | Add `log()` on send (SUCCESS + mock txHash) |
+| `src/components/widgets/DexWidget/index.tsx` | Add `log()` on wallet create/import/delete/add account/copy address |
+| `src/components/widgets/DexWidget/settingsDialog.tsx` | Add wallet delete button + confirmation UI |
+| `src/components/widgets/index.ts` | Renamed import `CexWidget`, key `Exchange` → `Cex` |
+| `src/layout/defaults.ts` | Widget key `Exchange` → `Cex`, DEX `defaultVisible: true`, Dex layout items added |
+| `src/store/atoms.ts` | Removed all migration logic |
+| `CLAUDE.md` | Updated ExchangeWidget → CexWidget reference |
+
+**Build & lint:** Build passes. Lint passes (0 errors, 5 pre-existing warnings).

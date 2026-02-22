@@ -10,6 +10,7 @@ import {
   FormControlLabel,
 } from '@mui/material'
 import type { ExchangeConfig } from '../types'
+import { log } from '../../../../services/logger'
 
 export interface OrderState {
   side: 'buy' | 'sell'
@@ -225,6 +226,7 @@ export default function OrderTab({ exchange, pair, state, onChange }: OrderTabPr
           onClick={() => {
             onChange({ loopActive: false })
             sellOnlyRef.current = false
+            log({ level: 'WARN', category: 'ORDER', source: exchange.id, message: `[${exchange.label}] Sell-Only loop cancelled — ${pair}` })
           }}
           sx={{
             mt: 1, fontSize: '0.7rem',
@@ -243,7 +245,18 @@ export default function OrderTab({ exchange, pair, state, onChange }: OrderTabPr
             if (side === 'sell' && sellOnly) {
               onChange({ loopActive: true })
               sellOnlyRef.current = true
+              log({
+                level: 'INFO', category: 'ORDER', source: exchange.id,
+                message: `[${exchange.label}] Sell-Only loop started — ${pair} qty=${quantity} interval=${state.pollInterval}ms`,
+                data: { exchange: exchange.label, pair, quantity, pollInterval: state.pollInterval },
+              })
               // Phase 2: start polling loop here
+            } else {
+              log({
+                level: 'INFO', category: 'ORDER', source: exchange.id,
+                message: `[${exchange.label}] ${side.toUpperCase()} ${orderType} — ${pair} qty=${quantity}${orderType === 'limit' ? ` @ ${price}` : ''}`,
+                data: { exchange: exchange.label, side, orderType, pair, price, quantity, total },
+              })
             }
             // Phase 2: send order to exchange API
           }}

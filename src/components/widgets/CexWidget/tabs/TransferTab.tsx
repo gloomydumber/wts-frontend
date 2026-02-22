@@ -3,6 +3,7 @@ import type { ExchangeConfig, TransferTarget } from '../types'
 import type { ExchangeMetadata } from '../preload'
 import { mockEnabledIsolatedPairs, mockWalletBalances } from '../mockData'
 import type { WalletType } from '../mockData'
+import { log } from '../../../../services/logger'
 
 export interface TransferState {
   from: TransferTarget
@@ -115,12 +116,22 @@ export default function TransferTab({ exchange, metadata, state, onChange }: Tra
     if (enabledIsolatedPairs.includes(sym)) return
     if (enabledIsolatedPairs.length >= 10) return
     onChange({ enabledIsolatedPairs: [...enabledIsolatedPairs, sym], pairInput: '' })
+    log({
+      level: 'INFO', category: 'TRANSFER', source: exchange.id,
+      message: `[${exchange.label}] Enabled isolated margin pair: ${sym}`,
+      data: { exchange: exchange.label, pair: sym },
+    })
   }
 
   const handleDisablePair = () => {
     const sym = pairInput.trim().toUpperCase()
     if (!sym) return
     onChange({ enabledIsolatedPairs: enabledIsolatedPairs.filter((p) => p !== sym), pairInput: '' })
+    log({
+      level: 'WARN', category: 'TRANSFER', source: exchange.id,
+      message: `[${exchange.label}] Disabled isolated margin pair: ${sym}`,
+      data: { exchange: exchange.label, pair: sym },
+    })
   }
 
   return (
@@ -258,7 +269,18 @@ export default function TransferTab({ exchange, metadata, state, onChange }: Tra
         </Box>
       )}
 
-      <Button variant="outlined" fullWidth sx={{ mt: 'auto', fontSize: '0.7rem' }}>
+      <Button
+        variant="outlined"
+        fullWidth
+        sx={{ mt: 'auto', fontSize: '0.7rem' }}
+        onClick={() => {
+          log({
+            level: 'INFO', category: 'TRANSFER', source: exchange.id,
+            message: `[${exchange.label}] Transfer ${amount || '0'} ${safeAsset} — ${TRANSFER_LABELS[from]} → ${TRANSFER_LABELS[to]}`,
+            data: { exchange: exchange.label, from, to, asset: safeAsset, amount, ...(showIsolatedSection ? { isolatedPair } : {}) },
+          })
+        }}
+      >
         {TRANSFER_LABELS[from]} → {TRANSFER_LABELS[to]} (Mock)
       </Button>
     </Box>

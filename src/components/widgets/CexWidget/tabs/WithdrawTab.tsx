@@ -3,6 +3,7 @@ import type { ExchangeConfig } from '../types'
 import { EXCHANGES } from '../types'
 import type { ExchangeMetadata } from '../preload'
 import { mockDepositAddresses } from '../mockData'
+import { log } from '../../../../services/logger'
 
 export interface WithdrawState {
   asset: string
@@ -169,7 +170,20 @@ export default function WithdrawTab({ exchange, metadata, state, onChange }: Wit
         </Typography>
       )}
 
-      <Button variant="outlined" fullWidth sx={{ mt: 'auto', fontSize: '0.7rem' }}>
+      <Button
+        variant="outlined"
+        fullWidth
+        sx={{ mt: 'auto', fontSize: '0.7rem' }}
+        onClick={() => {
+          const destLabel = destination === 'custom' ? 'custom' : EXCHANGES.find(e => e.id === destination)?.label ?? destination
+          // Phase 2: include API response (txId, status, fee) in log data
+          log({
+            level: 'INFO', category: 'WITHDRAW', source: exchange.id,
+            message: `[${exchange.label}] Withdraw ${amount || '0'} ${asset} → ${destLabel} (${networkName}) addr=${address}${memo ? ` memo=${memo}` : ''}`,
+            data: { exchange: exchange.label, asset, network: networkName, destination: destLabel, address, memo: memo || undefined, amount },
+          })
+        }}
+      >
         Withdraw (Mock)
       </Button>
     </Box>

@@ -1,5 +1,5 @@
 /**
- * Pre-load / Bootstrap Layer for ExchangeWidget.
+ * Pre-load / Bootstrap Layer for CexWidget.
  *
  * Loads exchange metadata (assets, networks, pairs, fees) that populates
  * Autocomplete options and UI elements. This is widget-scoped — only exchanges

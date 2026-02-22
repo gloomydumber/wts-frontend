@@ -51,6 +51,7 @@ import DisperseTab from './tabs/DisperseTab'
 import TransferTab from './tabs/TransferTab'
 import BrowserTab from './tabs/BrowserTab'
 import SettingsDialog from './settingsDialog'
+import { log } from '../../../services/logger'
 
 export default function DexWidget() {
   const [chainIdxMap, setChainIdxMap] = useState<Record<string, number>>({})
@@ -195,6 +196,13 @@ export default function DexWidget() {
     setSetupMode('none')
     setSetupMnemonic('')
     setAddingWallet(false)
+
+    const firstAccount = accounts[0]
+    log({
+      level: 'SUCCESS', category: 'WALLET', source: 'app',
+      message: `Wallet ${setupMode === 'create' ? 'created' : 'imported'}: ${newWallet.label} (EVM: ${firstAccount.evmAddress.slice(0, 6)}...${firstAccount.evmAddress.slice(-4)}, SOL: ${firstAccount.solanaAddress.slice(0, 4)}...${firstAccount.solanaAddress.slice(-4)})`,
+      data: { walletId: id, method: setupMode, accountCount: accounts.length, evmAddress: firstAccount.evmAddress, solanaAddress: firstAccount.solanaAddress },
+    })
   }
 
   // Add account to active wallet
@@ -203,7 +211,13 @@ export default function DexWidget() {
     const newCount = activeWallet.accounts.length + 1
     const accounts = deriveAccounts(activeWallet.mnemonic, newCount)
     const newIdx = newCount - 1
+    const newAccount = accounts[newIdx]
     updateActiveWallet(w => ({ ...w, accounts, activeAccountIndex: newIdx }))
+    log({
+      level: 'INFO', category: 'WALLET', source: 'app',
+      message: `Account added: ${newAccount.label} (EVM: ${newAccount.evmAddress.slice(0, 6)}...${newAccount.evmAddress.slice(-4)}, SOL: ${newAccount.solanaAddress.slice(0, 4)}...${newAccount.solanaAddress.slice(-4)})`,
+      data: { walletId: activeWallet.id, walletLabel: activeWallet.label, accountIndex: newIdx, evmAddress: newAccount.evmAddress, solanaAddress: newAccount.solanaAddress },
+    })
   }
 
   // --- Wallet tab actions ---
@@ -240,6 +254,12 @@ export default function DexWidget() {
   }
 
   const handleDeleteWallet = (walletId: string) => {
+    const deletedWallet = walletsState.wallets.find(w => w.id === walletId)
+    const deletedLabel = deletedWallet?.label ?? walletId
+    // Phase 2: Before deleting, write the mnemonic and all derived private keys
+    // to the .jsonl audit log via Tauri.invoke('write_log_line', ...) so the user
+    // can recover funds if they didn't back up manually. The .jsonl file must be
+    // encrypted at rest (Tauri filesystem encryption) since it will contain secrets.
     setWalletsState((prev) => {
       const remaining = prev.wallets.filter(w => w.id !== walletId)
       const newActiveId = prev.activeWalletId === walletId
@@ -249,6 +269,11 @@ export default function DexWidget() {
     })
     setDeleteConfirmId(null)
     setContextMenu(null)
+    log({
+      level: 'WARN', category: 'WALLET', source: 'app',
+      message: `Wallet deleted: ${deletedLabel}`,
+      data: { walletId },
+    })
   }
 
   // Focus rename input when it appears
@@ -591,6 +616,11 @@ function WalletBar({ chain, walletState, onAccountChange, onAddAccount }: {
     navigator.clipboard.writeText(address)
     setCopied(true)
     setTimeout(() => setCopied(false), 1000)
+    log({
+      level: 'INFO', category: 'WALLET', source: chain.id,
+      message: `[${chain.label}] Copied account address: ${address.slice(0, 6)}...${address.slice(-4)}`,
+      data: { chain: chain.label, address, accountIndex: walletState.activeAccountIndex },
+    })
   }
 
   return (

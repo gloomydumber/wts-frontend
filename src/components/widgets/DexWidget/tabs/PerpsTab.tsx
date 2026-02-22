@@ -20,6 +20,7 @@ import {
 import type { ChainConfig, WalletState, PerpsTabState, PerpProtocolId, FundingRate } from '../types'
 import { PERP_PROTOCOLS } from '../types'
 import { mockPerpPositions, mockFundingRates } from '../mockData'
+import { log } from '../../../../services/logger'
 
 function formatCountdown(ms: number): string {
   const totalSec = Math.max(0, Math.floor(ms / 1000))
@@ -265,6 +266,15 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
           '&:hover': { bgcolor: state.side === 'long' ? 'rgba(255,0,0,0.9)' : 'rgba(0,0,255,0.9)' },
         }}
         disabled={!state.size || parseFloat(state.size) <= 0}
+        onClick={() => {
+          // Phase 2: replace mockTxHash with actual RPC response txHash
+          const mockTxHash = `0x${crypto.randomUUID().replace(/-/g, '')}${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
+          log({
+            level: 'SUCCESS', category: 'PERPS', source: chain.id,
+            message: `[${chain.label}] ${state.side.toUpperCase()} ${state.pair} ${state.orderType} — $${state.size} @ ${state.leverage}x (${currentProtocol?.name ?? state.protocol}) | tx: ${mockTxHash.slice(0, 10)}...${mockTxHash.slice(-6)}`,
+            data: { chain: chain.label, side: state.side, pair: state.pair, orderType: state.orderType, size: state.size, leverage: state.leverage, protocol: state.protocol, txHash: mockTxHash, ...(state.orderType === 'limit' ? { price: state.price } : {}) },
+          })
+        }}
       >
         {state.side === 'long' ? 'Long' : 'Short'} {state.pair} (Mock)
       </Button>

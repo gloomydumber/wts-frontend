@@ -1,41 +1,44 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Box } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
+import { log, subscribe, getEntries, type LogEntry } from '../../../services/logger'
 
-interface LogEntry {
-  time: string
-  level: 'INFO' | 'WARN' | 'ERROR' | 'SUCCESS'
-  msg: string
+const DISPLAY_CAP = 100
+
+// Phase 2: switch to react-virtuoso if display cap needs to increase beyond ~200
+
+/** Emit system-level init logs (runs once on first mount). */
+let systemInitDone = false
+function emitSystemInit() {
+  if (systemInitDone) return
+  systemInitDone = true
+  log({ level: 'INFO', category: 'SYSTEM', source: 'app', message: 'WTS Frontend v0.1.0 initialized' })
+  log({ level: 'INFO', category: 'SYSTEM', source: 'app', message: 'Layout restored from localStorage' })
+  log({ level: 'SUCCESS', category: 'SYSTEM', source: 'app', message: 'Mock data loaded — no API calls (Phase 1)' })
+  log({ level: 'INFO', category: 'SYSTEM', source: 'app', message: 'Widgets ready: Console, Order, Balance, Orderbook, PremiumTable' })
 }
 
-const initialLogs: LogEntry[] = [
-  { time: '00:00:00', level: 'INFO', msg: 'WTS Frontend v0.1.0 initialized' },
-  { time: '00:00:01', level: 'INFO', msg: 'Layout restored from localStorage' },
-  { time: '00:00:02', level: 'SUCCESS', msg: 'Mock data loaded — no API calls (Phase 1)' },
-  { time: '00:00:03', level: 'INFO', msg: 'Widgets ready: Console, Order, Balance, Orderbook, PremiumTable' },
-]
-
-const mockMessages: Omit<LogEntry, 'time'>[] = [
-  { level: 'INFO', msg: 'Ticker update: BTC/USDT 97,234.50' },
-  { level: 'INFO', msg: 'Ticker update: ETH/USDT 3,412.80' },
-  { level: 'WARN', msg: 'Upbit WS reconnecting...' },
-  { level: 'SUCCESS', msg: 'Upbit WS connected' },
-  { level: 'INFO', msg: 'Orderbook snapshot: BTC/KRW depth=20' },
-  { level: 'INFO', msg: 'Balance refresh: Binance 3 assets' },
-  { level: 'ERROR', msg: 'Bithumb rate limit: 429 Too Many Requests' },
-  { level: 'INFO', msg: 'Premium calc: BTC +1.23% (Upbit/Binance)' },
-  { level: 'SUCCESS', msg: 'Order filled: SELL 0.01 BTC @ 97,250' },
-  { level: 'INFO', msg: 'Ticker update: XRP/USDT 2.4310' },
-]
-
-function getTimestamp(): string {
-  const d = new Date()
-  return d.toLocaleTimeString('en-GB', { hour12: false })
+/** Category badge colors — static map avoids per-render allocation. */
+const CATEGORY_COLORS: Record<string, string> = {
+  ORDER: '#e57373',
+  DEPOSIT: '#81c784',
+  WITHDRAW: '#ffb74d',
+  TRANSFER: '#64b5f6',
+  MARGIN: '#ba68c8',
+  SWAP: '#4dd0e1',
+  PERPS: '#ff8a65',
+  DISPERSE: '#a1887f',
+  WALLET: '#90a4ae',
+  SYSTEM: '#78909c',
 }
+
+// Emit system init once at module load (before any component render).
+// This ensures the logger buffer has init entries ready for the lazy initializer.
+emitSystemInit()
 
 export default function ConsoleWidget() {
   const theme = useTheme()
-  const [logs, setLogs] = useState<LogEntry[]>(initialLogs)
+  const [logs, setLogs] = useState<LogEntry[]>(() => Array.from(getEntries()).slice(-DISPLAY_CAP))
   const containerRef = useRef<HTMLDivElement>(null)
   const isAtBottomRef = useRef(true)
 
@@ -57,18 +60,17 @@ export default function ConsoleWidget() {
   }, [])
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const mock = mockMessages[Math.floor(Math.random() * mockMessages.length)]
+    // Subscribe to new entries
+    return subscribe((entry) => {
       setLogs((prev) => {
-        if (prev.length >= 100) {
-          const next = prev.slice(-99)
-          next.push({ time: getTimestamp(), ...mock })
+        if (prev.length >= DISPLAY_CAP) {
+          const next = prev.slice(-(DISPLAY_CAP - 1))
+          next.push(entry)
           return next
         }
-        return [...prev, { time: getTimestamp(), ...mock }]
+        return [...prev, entry]
       })
-    }, 3000 + Math.random() * 4000)
-    return () => clearInterval(interval)
+    })
   }, [])
 
   // Auto-scroll only if already at bottom — no smooth animation
@@ -84,19 +86,31 @@ export default function ConsoleWidget() {
       onScroll={handleScroll}
       sx={{ p: 0.5, overflow: 'auto', height: '100%', bgcolor: 'background.default' }}
     >
-      {logs.map((log, i) => (
-        <div key={i} className="console-line">
-          <span style={{ color: timeColor, marginRight: 4 }}>{log.time}</span>
+      {logs.map((entry) => (
+        <div key={entry.id} className="console-line">
+          <span style={{ color: timeColor, marginRight: 4 }}>
+            {new Date(entry.timestamp).toLocaleTimeString('en-GB', { hour12: false })}
+          </span>
           <span
             style={{
-              color: levelColors[log.level],
+              color: levelColors[entry.level],
               marginRight: 4,
-              fontWeight: log.level === 'ERROR' ? 700 : 400,
+              fontWeight: entry.level === 'ERROR' ? 700 : 400,
             }}
           >
-            [{log.level}]
+            [{entry.level}]
           </span>
-          <span style={{ color: msgColor }}>{log.msg}</span>
+          <span
+            style={{
+              color: CATEGORY_COLORS[entry.category] || '#78909c',
+              marginRight: 4,
+              fontSize: '0.6em',
+              fontWeight: 600,
+            }}
+          >
+            [{entry.category}]
+          </span>
+          <span style={{ color: msgColor }}>{entry.message}</span>
         </div>
       ))}
     </Box>

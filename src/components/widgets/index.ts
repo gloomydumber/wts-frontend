@@ -1,7 +1,7 @@
 import type { ComponentType } from 'react'
 
 import ConsoleWidget from './ConsoleWidget'
-import ExchangeWidget from './ExchangeWidget'
+import CexWidget from './CexWidget'
 import OrderbookWidget from './OrderbookWidget'
 import PremiumTableWidget from './PremiumTableWidget'
 import ChartWidget from './ChartWidget'
@@ -13,7 +13,7 @@ import ShortcutWidget from './ShortcutWidget'
 // Component map — keyed by layout item ID
 export const widgetComponents: Record<string, ComponentType> = {
   Console: ConsoleWidget,
-  Exchange: ExchangeWidget,
+  Cex: CexWidget,
   Orderbook: OrderbookWidget,
   PremiumTable: PremiumTableWidget,
   Chart: ChartWidget,

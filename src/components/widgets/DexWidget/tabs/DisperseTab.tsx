@@ -17,6 +17,7 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import AddIcon from '@mui/icons-material/Add'
 import type { ChainConfig, WalletState, DisperseTabState, DisperseRecipient } from '../types'
 import type { DexChainMetadata } from '../preload'
+import { log } from '../../../../services/logger'
 
 function parseCsv(csv: string): DisperseRecipient[] {
   return csv
@@ -201,6 +202,16 @@ export default function DisperseTab({ chain, metadata, walletState, state, onCha
         size="small"
         disabled={state.recipients.filter((r) => r.address && r.amount).length === 0}
         sx={{ fontSize: '0.7rem', textTransform: 'none' }}
+        onClick={() => {
+          const validRecipients = state.recipients.filter((r) => r.address && r.amount)
+          // Phase 2: replace mockTxHash with actual RPC response txHash
+          const mockTxHash = `0x${crypto.randomUUID().replace(/-/g, '')}${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
+          log({
+            level: 'SUCCESS', category: 'DISPERSE', source: chain.id,
+            message: `[${chain.label}] Disperse ${totalAmount.toFixed(6)} ${selectedToken?.symbol ?? '?'} to ${validRecipients.length} recipients | tx: ${mockTxHash.slice(0, 10)}...${mockTxHash.slice(-6)}`,
+            data: { chain: chain.label, token: selectedToken?.symbol, totalAmount, recipientCount: validRecipients.length, txHash: mockTxHash },
+          })
+        }}
       >
         Send All (Mock)
       </Button>

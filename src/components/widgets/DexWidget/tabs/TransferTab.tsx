@@ -8,6 +8,7 @@ import {
 } from '@mui/material'
 import type { ChainConfig, WalletState, TransferTabState } from '../types'
 import type { DexChainMetadata } from '../preload'
+import { log } from '../../../../services/logger'
 
 export default function TransferTab({ chain, metadata, walletState, state, onChange }: {
   chain: ChainConfig
@@ -119,6 +120,15 @@ export default function TransferTab({ chain, metadata, walletState, state, onCha
         size="small"
         disabled={!state.toAddress || !state.amount}
         sx={{ fontSize: '0.7rem', textTransform: 'none', mt: 0.5 }}
+        onClick={() => {
+          // Phase 2: replace mockTxHash with actual RPC response txHash
+          const mockTxHash = `0x${crypto.randomUUID().replace(/-/g, '')}${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
+          log({
+            level: 'SUCCESS', category: 'TRANSFER', source: chain.id,
+            message: `[${chain.label}] Send ${state.amount} ${selectedToken?.symbol ?? '?'} → ${state.toAddress.slice(0, 6)}...${state.toAddress.slice(-4)} | tx: ${mockTxHash.slice(0, 10)}...${mockTxHash.slice(-6)}`,
+            data: { chain: chain.label, token: selectedToken?.symbol, amount: state.amount, toAddress: state.toAddress, memo: state.memo || undefined, txHash: mockTxHash },
+          })
+        }}
       >
         Send (Mock)
       </Button>
