@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback, memo } from 'react'
 import {
   Box,
   Typography,
@@ -20,6 +20,35 @@ import type { ChainConfig, WalletState, SwapTabState, SwapRoute } from '../types
 import type { DexChainMetadata } from '../preload'
 import { mockSwapRoutes } from '../mockData'
 
+/**
+ * "Refresh in Xs" countdown — auto-refreshes swap quotes every 15 s
+ * so users don't execute on stale on-chain prices.
+ * Isolated into its own component so the 1 Hz setInterval doesn't
+ * re-render SwapTab's 27 sx props and leak Emotion cache entries.
+ * In Phase 2, tie the interval to real aggregator quote TTL.
+ */
+const QuoteCountdown = memo(function QuoteCountdown({ onRefresh }: { onRefresh: () => void }) {
+  const [timer, setTimer] = useState(15)
+  useEffect(() => {
+    const id = setInterval(() => {
+      setTimer((prev) => {
+        if (prev <= 1) {
+          onRefresh()
+          return 15
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(id)
+  }, [onRefresh])
+
+  return (
+    <Typography style={{ fontSize: '0.5rem', color: 'var(--mui-palette-text-disabled, rgba(255,255,255,0.3))' }}>
+      Refresh in {timer}s
+    </Typography>
+  )
+})
+
 export default function SwapTab({ chain, metadata, walletState, state, onChange }: {
   chain: ChainConfig
   metadata: DexChainMetadata
@@ -27,35 +56,23 @@ export default function SwapTab({ chain, metadata, walletState, state, onChange 
   state: SwapTabState
   onChange: (update: Partial<SwapTabState>) => void
 }) {
-  const [quoteTimer, setQuoteTimer] = useState(15)
   const [refreshKey, setRefreshKey] = useState(0)
+  const handleRefresh = useCallback(() => setRefreshKey((k) => k + 1), [])
   const tokens = metadata.tokenList
 
   // Derive tokenOut default on first render via initializer
   const effectiveTokenOut = state.tokenOut || (tokens.length > 1 ? tokens[1].address : '')
 
   // Compute routes synchronously from state (mock data is sync)
+  // refreshKey is read to satisfy exhaustive-deps — its value isn't used,
+  // but incrementing it forces route recomputation when the quote timer expires.
   const routes: SwapRoute[] = useMemo(() => {
+    void refreshKey
     if (state.tokenIn && effectiveTokenOut && state.amountIn && parseFloat(state.amountIn) > 0) {
       return mockSwapRoutes(chain.id, state.tokenIn, effectiveTokenOut, state.amountIn)
     }
     return []
   }, [chain.id, state.tokenIn, effectiveTokenOut, state.amountIn, refreshKey])
-
-  // Quote refresh countdown
-  useEffect(() => {
-    if (routes.length === 0) return
-    const interval = setInterval(() => {
-      setQuoteTimer((prev) => {
-        if (prev <= 1) {
-          setRefreshKey((k) => k + 1)
-          return 15
-        }
-        return prev - 1
-      })
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [routes.length])
 
   const handleFlip = () => {
     onChange({ tokenIn: effectiveTokenOut, tokenOut: state.tokenIn })
@@ -138,9 +155,7 @@ export default function SwapTab({ chain, metadata, walletState, state, onChange 
             <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', textTransform: 'uppercase' }}>
               Routes ({routes.length})
             </Typography>
-            <Typography sx={{ fontSize: '0.5rem', color: 'text.disabled' }}>
-              Refresh in {quoteTimer}s
-            </Typography>
+            <QuoteCountdown onRefresh={handleRefresh} />
           </Box>
 
           <TableContainer>

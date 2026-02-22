@@ -1004,10 +1004,55 @@ After 10 minutes: **~15,000+ orphaned `<style>` tags** in `<head>`, each requiri
 - Dynamic styles that change on every render → inline `style={}` prop (bypasses Emotion)
 - Never use `sx={{ someProp: dynamicValue }}` in a hot render path
 
-**Status:** Fix applied, needs real-world validation (leave app running 10+ min and check). If still laggy, investigate further:
-- RGL layout recalculation on child re-render
-- Jotai `atomWithStorage` serialization overhead
-- React DevTools Profiler to identify cascade re-renders
+**Status (2026-02-22):** Original fix (OrderbookWidget, ArbitrageWidget, ConsoleWidget) validated — these no longer leak. Additional fix applied to DexWidget's `PerpsTab` and `SwapTab` — both had 1 Hz `setInterval` timers re-rendering parent components with 38 and 27 `sx` props respectively. Countdown display extracted into isolated `FundingCountdown` and `QuoteCountdown` child components that own the timer state.
+
+### OOM Investigation (2026-02-22) — Ongoing Tracking
+
+**Symptom:** Chrome "Out of Memory" crash after extended use.
+
+**Testing results:**
+| Scenario | Duration | Result |
+|----------|----------|--------|
+| PremiumTable widget OFF in wts-frontend | 2 hours | No OOM |
+| premium-table-refactored standalone (`npm run dev`) | 3.5 hours | No OOM |
+| PremiumTable widget ON in wts-frontend | 30 min – 1 hour | OK (no OOM) |
+| PremiumTable widget ON in wts-frontend | ~2 hours | **OOM crashed** |
+
+**Root cause found: React 19 dev-mode `performance.measure()` accumulation.**
+
+React 19's development build (`react-dom/client.development.js`) calls `performance.measure()` on every component render for DevTools Profiler integration. React 18 does NOT do this at all — zero `performance.measure` calls in its dev build. PremiumTable's live WebSocket data drives hundreds of renders per second (~100 tickers × multiple updates/sec), creating thousands of `PerformanceMeasure` entries per minute that accumulate in the browser's performance timeline buffer forever (no eviction). This is why:
+- premium-table-refactored standalone (React 18 dev) → fine for 3.5h (no `performance.measure`)
+- wts-frontend (React 19 dev) without PremiumTable → fine for 2h (low render frequency)
+- wts-frontend (React 19 dev) with PremiumTable → OOM at ~2h (high-frequency renders × `performance.measure` = unbounded growth)
+- wts-frontend `npm run preview` (production build) → 50–100 MB stable (production build strips `performance.measure`)
+
+**This is a dev-mode-only issue. Production builds are not affected.**
+
+**Contributing factors (not individually fatal, but additive):**
+1. ~~Emotion style leak from timer-driven re-renders with `sx` props~~ — FIXED
+2. 1.3 MB parsed JS bundle occupying WebView memory
+3. Live WebSocket connections in PremiumTable (real-time data for all listed tickers)
+4. System-level pressure: other apps, Chrome extensions, tabs
+
+**Heap snapshot evidence (dev mode, 10–20 min intervals):**
+| Snapshot | Heap size | Delta |
+|----------|-----------|-------|
+| 1 | 292 MB | — |
+| 2 | 376 MB | +84 MB |
+| 3 | 602 MB | +226 MB |
+
+Comparison of snapshot 3 vs 1: `PerformanceMeasure` objects account for +311 MB. All other categories are negligible (`(compiled code)` +517 KB, `Array` +160 KB).
+
+**Production build verification:** `npm run preview` → heap stable at 50–100 MB over extended period. No leak.
+
+**premium-table package audit (v0.4.2) — confirmed clean:**
+- Row component uses `React.memo` + custom comparator + inline `style={}` for all dynamic values
+- Price flash uses ref-based DOM mutation, not React state
+- `react-use-websocket` stores only `lastMessage` (overwritten, not appended)
+- Module-level Maps bounded by ticker count, not time
+- WebSocket connections clean up on unmount
+
+**No code changes needed.** The Emotion style leak fixes (PerpsTab, SwapTab) remain valid improvements but were not the OOM cause.
 
 ### Per-Widget Performance Considerations
 
@@ -1020,6 +1065,21 @@ Each widget may have unique performance characteristics depending on its update 
 5. **Does it sort/filter data on every render?** — Wrap in `useMemo` with proper deps.
 
 **Rule of thumb:** If a widget updates more than once every 5 seconds, treat its render path as "hot" and avoid MUI styled components (`Box`, `Typography`, `Table*`) with dynamic `sx` props in favor of plain HTML + inline styles + CSS classes.
+
+### Bundle Size (1.3 MB single chunk)
+
+Build produces a single JS chunk (~1,344 kB min / 427 kB gzip). Vite warns at 500 kB.
+
+**Why it's large:** MUI 7 + Emotion runtime + MUI Icons + react-grid-layout + all widgets in one chunk.
+
+**Tauri context:** No network transfer cost (loaded from local filesystem), but WebView still pays JS parse/compile/startup time and memory overhead. Trading tools run alongside heavy processes (browser tabs, exchange sites, multiple real-time widgets), and not every user has high-end hardware.
+
+**Current stance:** Acceptable for Phase 1/2. Don't optimize unless startup or UI latency is noticeable.
+
+**If it becomes a problem — easy wins without architecture changes:**
+1. Lazy-load heavy widgets (`React.lazy`) — DexWidget, PremiumTableWidget, ChartWidget are the largest
+2. Split vendor chunks in vite config (`manualChunks: { mui: ['@mui/material', '@mui/icons-material'] }`)
+3. Audit `@mui/icons-material` — named imports should tree-shake, but verify with `npx vite-bundle-visualizer`
 
 ---
 
@@ -2033,6 +2093,28 @@ Automatic on first load:
 - `7f8da89` — `fix(dex): render unicode arrow in swap route path` — `\u2192` in JSX text was rendering as literal string; wrapped in `{'\u2192'}` expression
 
 All pushed to `origin/master`.
+
+## Session: 2026-02-22 — Emotion Style Leak Fix + OOM Investigation
+
+### What Was Done
+
+1. **Fixed Emotion style leak in DexWidget's PerpsTab and SwapTab** — Both tabs had 1 Hz `setInterval` timers that re-rendered the entire component every second (PerpsTab: 38 `sx` props, SwapTab: 27 `sx` props). Each re-render serialized new Emotion cache entries. Extracted countdown display into isolated child components (`FundingCountdown`, `QuoteCountdown`) that own the timer state. Parent components no longer re-render every second.
+
+2. **Fixed ESLint warning on SwapTab** — `refreshKey` in `useMemo` deps was flagged as unnecessary because it wasn't read inside the callback. Added `void refreshKey` to satisfy `exhaustive-deps` rule while preserving intentional cache-busting behavior.
+
+3. **OOM investigation — root cause identified: React 19 dev-mode `performance.measure()` accumulation.** React 19's development build emits `performance.measure()` on every component render (React 18 does not). PremiumTable's live WebSocket data drives hundreds of renders/sec, creating `PerformanceMeasure` entries that accumulate unboundedly. Heap snapshots confirmed: +311 MB of `PerformanceMeasure` objects in 20 minutes. Production builds (`npm run preview`) are stable at 50–100 MB. **No code fix needed — dev-mode-only issue.**
+
+4. **Added Bundle Size section to HANDOFF.md Performance Notes** — Documents the 1.3 MB single chunk, Tauri context (parse/compile cost still matters despite no network transfer), and concrete mitigations if it becomes a problem (lazy-load, vendor chunk split, icon audit).
+
+5. **Note: React version difference between projects** — wts-frontend uses React 19.2.0, premium-table-refactored uses React 18.3.1 as devDependency. The published package runs on React 19 in wts-frontend via peerDependency resolution — no compatibility issue. Upgrading premium-table-refactored's devDependency to React 19 is optional (same published output, but `npm run dev` would also suffer the `performance.measure` OOM during long sessions).
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `src/components/widgets/DexWidget/tabs/PerpsTab.tsx` | Extracted `FundingCountdown` component — isolated 1 Hz timer, `memo`, inline `style` |
+| `src/components/widgets/DexWidget/tabs/SwapTab.tsx` | Extracted `QuoteCountdown` component — isolated 1 Hz timer, `memo`, `useCallback` for refresh; fixed lint warning with `void refreshKey` |
+| `HANDOFF.md` | OOM investigation findings, bundle size notes, session log |
 
 ## Session: 2026-02-21 — Light Theme Fix + PremiumTable Theme Support (0.4.0)
 

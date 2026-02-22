@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, memo } from 'react'
 import {
   Box,
   Typography,
@@ -17,7 +17,7 @@ import {
   TableRow,
   Chip,
 } from '@mui/material'
-import type { ChainConfig, WalletState, PerpsTabState, PerpProtocolId } from '../types'
+import type { ChainConfig, WalletState, PerpsTabState, PerpProtocolId, FundingRate } from '../types'
 import { PERP_PROTOCOLS } from '../types'
 import { mockPerpPositions, mockFundingRates } from '../mockData'
 
@@ -29,17 +29,46 @@ function formatCountdown(ms: number): string {
   return `${h}h ${m}m ${s}s`
 }
 
+/**
+ * Live countdown to next funding-rate settlement (typically every 8 h).
+ * Isolated into its own component so the 1 Hz setInterval doesn't
+ * re-render PerpsTab's 38 sx props and leak Emotion cache entries.
+ * In Phase 2, replace mock nextFundingTime with real exchange WS data.
+ */
+const FundingCountdown = memo(function FundingCountdown({ rates }: { rates: FundingRate[] }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  return (
+    <Box style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      {rates.map((f) => {
+        const rateNum = parseFloat(f.rate)
+        return (
+          <Chip
+            key={f.pair}
+            label={`${f.pair}: ${rateNum >= 0 ? '+' : ''}${f.rate}% — ${formatCountdown(f.nextFundingTime - now)}`}
+            size="small"
+            sx={{
+              height: 18, fontSize: '0.5rem',
+              bgcolor: rateNum >= 0 ? 'action.hover' : 'rgba(255,0,0,0.08)',
+              color: rateNum >= 0 ? 'primary.main' : 'error.main',
+            }}
+          />
+        )
+      })}
+    </Box>
+  )
+})
+
 export default function PerpsTab({ chain, walletState, state, onChange }: {
   chain: ChainConfig
   walletState: WalletState
   state: PerpsTabState
   onChange: (update: Partial<PerpsTabState>) => void
 }) {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [])
 
   const availableProtocols = PERP_PROTOCOLS.filter((p) => p.chains.includes(chain.id))
   const currentProtocol = availableProtocols.find((p) => p.id === state.protocol) || availableProtocols[0]
@@ -246,20 +275,7 @@ export default function PerpsTab({ chain, walletState, state, onChange }: {
           <Typography sx={{ fontSize: '0.55rem', color: 'text.secondary', textTransform: 'uppercase', mb: 0.5 }}>
             Funding Rates
           </Typography>
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            {protocolFunding.map((f) => (
-              <Chip
-                key={f.pair}
-                label={`${f.pair}: ${parseFloat(f.rate) >= 0 ? '+' : ''}${f.rate}% — ${formatCountdown(f.nextFundingTime - now)}`}
-                size="small"
-                sx={{
-                  height: 18, fontSize: '0.5rem',
-                  bgcolor: parseFloat(f.rate) >= 0 ? 'action.hover' : 'rgba(255,0,0,0.08)',
-                  color: parseFloat(f.rate) >= 0 ? 'primary.main' : 'error.main',
-                }}
-              />
-            ))}
-          </Box>
+          <FundingCountdown rates={protocolFunding} />
         </Box>
       )}
 
