@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { WidthProvider, Responsive, type Layout, type Layouts } from 'react-grid-layout'
 import { useAtom, useSetAtom } from 'jotai'
-import { debounce } from 'lodash'
 import { setUpdatesPaused as setPremiumTablePaused } from '@gloomydumber/premium-table'
 import { setUpdatesPaused as setOrderbookPaused } from '@gloomydumber/crypto-orderbook'
 
@@ -43,17 +42,14 @@ export default function GridLayout() {
 
   const breakpoint = getCurrentBreakpoint(windowWidth)
 
-  // Same debounce + JSON comparison pattern as rgl-practice
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // RGL v1.4.4 already handles dedup internally:
+  // - componentDidUpdate skips during activeDrag
+  // - onLayoutMaybeChanged uses deepEqual (fast-equals) before firing
+  // - only fires at dragStop/resizeStop/mount, not per-frame
   const onLayoutChange = useCallback(
-    debounce((_layout: Layout[], newLayouts: Layouts) => {
-      setLayouts((prev) => {
-        if (JSON.stringify(prev) !== JSON.stringify(newLayouts)) {
-          return newLayouts
-        }
-        return prev
-      })
-    }, 10),
+    (_layout: Layout[], newLayouts: Layouts) => {
+      setLayouts(newLayouts)
+    },
     [setLayouts],
   )
 

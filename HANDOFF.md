@@ -1082,6 +1082,36 @@ Build produces a single JS chunk (~1,344 kB min / 427 kB gzip). Vite warns at 50
 2. Split vendor chunks in vite config (`manualChunks: { mui: ['@mui/material', '@mui/icons-material'] }`)
 3. Audit `@mui/icons-material` — named imports should tree-shake, but verify with `npx vite-bundle-visualizer`
 
+### onLayoutChange: debounce + JSON.stringify Removed (2026-02-25)
+
+**Benchmark source:** `../wts-frontend-rgl-bench` — 18 A/B scenarios against wts-frontend production build using Playwright CDP metrics.
+
+**Benchmark combo extremes (optimized-best vs unoptimized-worst):**
+
+| Metric | Optimized | Unoptimized | Delta |
+|--------|-----------|-------------|-------|
+| Layout | 2.8ms | 30.6ms | 10.9x |
+| Script | 171ms | 380ms | 2.2x |
+| Max spike | 20.9ms | 150.1ms | 7.2x |
+| Heap delta | -4.3MB | +33.3MB | 37.6MB gap |
+
+**Note on jank % in benchmark:** All 18 scenarios report ~50% jank because Playwright's `page.mouse.move()` is paced by rAF (~16.67ms), and OS scheduling jitter pushes half of frames slightly over the 16.67ms threshold. The real differentiators are CDP metrics (LayoutDuration, ScriptDuration, max frame spikes, LongTasks).
+
+**Key finding from source audit:** RGL v1.4.4 already has all three protections that our code was duplicating:
+
+| Protection | RGL built-in mechanism | Our redundant code (removed) |
+|---|---|---|
+| Skip during drag | `!this.state.activeDrag` guard in `componentDidUpdate` | `isInteractingRef` (never needed) |
+| Deduplication | `deepEqual()` via `fast-equals` in `onLayoutMaybeChanged` | `JSON.stringify()` comparison |
+| Throttling | Only fires at `onDragStop`/`onResizeStop`/mount, not per-frame | `debounce(fn, 10)` from lodash |
+
+`onLayoutChange` fires from exactly 3 places in RGL v1.4.4's `ReactGridLayout.jsx`:
+1. `componentDidMount` — once
+2. `componentDidUpdate` — only when `!activeDrag` (NOT during drag)
+3. `onDragStop` / `onResizeStop` — once at interaction end
+
+**Fix applied:** Removed `debounce` wrapper, `JSON.stringify` comparison, and `lodash` import entirely. `onLayoutChange` is now a direct `setLayouts(newLayouts)`. Bundle size dropped **1,450 KB → 1,372 KB** (-78 KB) from lodash removal.
+
 ---
 
 ## Skills (`.claude/skills/`)
@@ -2571,5 +2601,28 @@ The drag/resize lag has been present since `rgl-practice` and is not fully resol
 | `src/layout/GridLayout.tsx` | `useCSSTransforms={true}`, orderbook `setUpdatesPaused` import + calls |
 | `src/styles/GlobalStyles.tsx` | `.grid-interacting iframe { pointer-events: none }` (from ChartWidget session) |
 | `package-lock.json` | `@gloomydumber/crypto-orderbook` 0.1.3 → 0.1.4 |
+
+**Build & lint:** Both pass (0 errors, 5 pre-existing warnings).
+
+## Session: 2026-02-25 — Remove Redundant onLayoutChange Overhead (Benchmark + Source Audit)
+
+### What Was Done
+
+1. **Analyzed benchmark results from `../wts-frontend-rgl-bench`** — 18 A/B scenarios testing CSS transforms, WebSocket pausing, debounce timing, widget count, and interaction type. Most optimizations (WS pause, useCSSTransforms) were already applied.
+
+2. **Audited RGL v1.4.4 source code** — Discovered that `onLayoutChange` already only fires at `onDragStop`/`onResizeStop`/mount (not per-frame), is guarded by `!this.state.activeDrag` in `componentDidUpdate`, and uses `deepEqual()` from `fast-equals` before calling the user callback. This means the `debounce(fn, 10)`, `JSON.stringify()` comparison, and any skip-during-drag ref were all redundant.
+
+3. **Simplified `onLayoutChange` in `GridLayout.tsx`** — Removed lodash `debounce` wrapper, `JSON.stringify` comparison, and the `eslint-disable` comment. Callback is now a direct `setLayouts(newLayouts)`. Removed `lodash` import (only usage in the project).
+
+4. **Updated HANDOFF.md Performance Notes** — Added benchmark data, RGL source audit findings, and the protection comparison table.
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `src/layout/GridLayout.tsx` | Removed `lodash` import, `debounce` wrapper, `JSON.stringify` comparison. `onLayoutChange` is now a direct `setLayouts`. |
+| `HANDOFF.md` | Benchmark findings + RGL source audit in Performance Notes, this session log |
+
+**Bundle size:** 1,450 KB → 1,372 KB (-78 KB, lodash removed).
 
 **Build & lint:** Both pass (0 errors, 5 pre-existing warnings).
