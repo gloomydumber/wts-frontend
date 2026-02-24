@@ -32,7 +32,7 @@ Widgets should be designed with clear data interfaces (TypeScript types for prop
 - [x] DexWidget — DEX panel with mock swap/perps/balance/wallet/DApp browser tabs
 - [x] MemoWidget — persistent user notes (localStorage)
 - [x] ShortcutWidget — quick links to exchange trading pages by ticker
-- [ ] ChartWidget — price charts (TradingView lightweight-charts) — placeholder only
+- [x] ChartWidget — TradingView Advanced Chart embed (free widget, full charting)
 
 ### Widget Behavior (Port from `rgl-practice`)
 
@@ -2469,5 +2469,55 @@ Also updated `md` layout accordingly.
 ### Widget Roadmap Update
 
 - [x] **OrderbookWidget** — now live with real WebSocket data from `@gloomydumber/crypto-orderbook`
+
+**Build & lint:** Both pass (0 errors, 5 pre-existing warnings).
+
+## Session: 2026-02-24 — ChartWidget Implementation (TradingView Advanced Chart)
+
+### What Was Done
+
+Replaced the ChartWidget placeholder with TradingView's free Advanced Chart embed widget. This is the last widget in the Phase 1 roadmap — all widgets are now implemented.
+
+### Implementation
+
+**Approach:** Native embed via `useRef` + `useEffect` script injection. TradingView's CDN delivers the full charting experience (100+ indicators, drawing tools, all exchange pairs) — no npm dependency needed.
+
+**ChartWidget (`src/components/widgets/ChartWidget/index.tsx`):**
+- `useRef<HTMLDivElement>` container with programmatic DOM creation
+- `useEffect` creates `tradingview-widget-container` div + `<script>` element pointing to `s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js`
+- Config: `autosize: true`, `symbol: "BINANCE:BTCUSDT"`, `locale: "kr"`, `allow_symbol_change: true`, `hide_side_toolbar: false`, `interval: "D"`
+- Theme synced from MUI palette mode (`dark`/`light`) + `backgroundColor` from `theme.palette.background.paper`
+- Effect dependencies: `[colorMode, bgColor]` — symbol/interval changes happen inside TradingView's own UI
+- Wrapped in `React.memo` to prevent re-renders from grid layout changes
+- Cleanup clears `innerHTML` on unmount/re-render
+
+**iframe pointer-events fix (GridLayout + GlobalStyles):**
+- Added `isInteracting` state to `GridLayout.tsx` — set `true` on drag/resize start, `false` on stop
+- Added `grid-interacting` CSS class to grid container during interaction
+- Added `.grid-interacting iframe { pointer-events: none }` in `GlobalStyles.tsx`
+- This prevents TradingView's iframe from stealing mouse events during grid drag/resize
+- Generic fix — benefits any future iframe-containing widget
+
+**Layout defaults (`src/layout/defaults.ts`):**
+- Changed `defaultVisible: false` → `true` for Chart
+- Added Chart layout item to all 5 breakpoints (lg/md/sm/xs/xxs)
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/components/widgets/ChartWidget/index.tsx` | Replaced placeholder with TradingView Advanced Chart embed |
+| `src/layout/defaults.ts` | Chart `defaultVisible: true` + layout items for all breakpoints |
+| `src/layout/GridLayout.tsx` | `isInteracting` state + `grid-interacting` class for iframe fix |
+| `src/styles/GlobalStyles.tsx` | `.grid-interacting iframe { pointer-events: none }` rule |
+| `HANDOFF.md` | Marked ChartWidget done, session log |
+
+### Future Work
+
+- **lightweight-charts implementation** — replace or supplement the free TradingView embed with `lightweight-charts` (open-source). Reasons:
+  - Full candle color customization (free embed locks this down — no `overrides` support)
+  - Support for pairs/exchanges not natively listed on TradingView (e.g., newly listed tokens on Upbit, unsupported exchanges)
+  - Requires a data feed (WebSocket or REST) to supply OHLCV candle data
+- No new npm dependencies added
 
 **Build & lint:** Both pass (0 errors, 5 pre-existing warnings).

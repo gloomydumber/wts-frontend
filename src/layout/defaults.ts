@@ -6,7 +6,7 @@ export const WIDGET_REGISTRY: WidgetConfig[] = [
   { id: 'Cex', label: 'CEX', defaultVisible: true },
   { id: 'Orderbook', label: 'Orderbook', defaultVisible: true },
   { id: 'PremiumTable', label: 'Premium Table', defaultVisible: true },
-  { id: 'Chart', label: 'Chart', defaultVisible: false },
+  { id: 'Chart', label: 'Chart', defaultVisible: true },
   { id: 'ExchangeCalc', label: 'Exchange Calculator', defaultVisible: true },
   { id: 'Dex', label: 'DEX', defaultVisible: true },
   { id: 'Memo', label: 'Memo', defaultVisible: false },
@@ -39,6 +39,7 @@ const lgLayout: WidgetLayoutItem[] = [
   { i: 'Orderbook', x: 0, y: 12, w: 4, h: 9 },
   { i: 'PremiumTable', x: 0, y: 6, w: 4, h: 6, minW: 3 },
   { i: 'ExchangeCalc', x: 0, y: 21, w: 3, h: 6 },
+  { i: 'Chart', x: 4, y: 24, w: 8, h: 12 },
 ]
 
 const mdLayout: WidgetLayoutItem[] = [
@@ -48,6 +49,7 @@ const mdLayout: WidgetLayoutItem[] = [
   { i: 'Orderbook', x: 5, y: 0, w: 5, h: 6 },
   { i: 'PremiumTable', x: 0, y: 30, w: 5, h: 9, minW: 3 },
   { i: 'ExchangeCalc', x: 5, y: 30, w: 3, h: 9 },
+  { i: 'Chart', x: 0, y: 39, w: 10, h: 10 },
 ]
 
 const smLayout: WidgetLayoutItem[] = [
@@ -57,6 +59,7 @@ const smLayout: WidgetLayoutItem[] = [
   { i: 'Orderbook', x: 0, y: 33, w: 6, h: 8 },
   { i: 'PremiumTable', x: 0, y: 41, w: 6, h: 9 },
   { i: 'ExchangeCalc', x: 0, y: 50, w: 3, h: 9 },
+  { i: 'Chart', x: 0, y: 53, w: 6, h: 10 },
 ]
 
 const xsLayout: WidgetLayoutItem[] = [
@@ -66,6 +69,7 @@ const xsLayout: WidgetLayoutItem[] = [
   { i: 'Orderbook', x: 0, y: 33, w: 4, h: 8, isResizable: false, isDraggable: false },
   { i: 'PremiumTable', x: 0, y: 41, w: 4, h: 9, isResizable: false, isDraggable: false },
   { i: 'ExchangeCalc', x: 0, y: 50, w: 3, h: 9, isResizable: false, isDraggable: false },
+  { i: 'Chart', x: 0, y: 59, w: 4, h: 10, isResizable: false, isDraggable: false },
 ]
 
 const xxsLayout: WidgetLayoutItem[] = [
@@ -75,6 +79,7 @@ const xxsLayout: WidgetLayoutItem[] = [
   { i: 'Orderbook', x: 0, y: 33, w: 2, h: 8, isResizable: false, isDraggable: false },
   { i: 'PremiumTable', x: 0, y: 41, w: 2, h: 9, isResizable: false, isDraggable: false },
   { i: 'ExchangeCalc', x: 0, y: 50, w: 2, h: 9, isResizable: false, isDraggable: false },
+  { i: 'Chart', x: 0, y: 59, w: 2, h: 10, isResizable: false, isDraggable: false },
 ]
 
 export const defaultLayouts: Layouts = {

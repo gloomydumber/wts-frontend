@@ -75,6 +75,11 @@ export default function GlobalStyles() {
           scrollbarColor: `${isDark ? 'rgba(0, 255, 0, 0.15)' : 'rgba(0, 0, 0, 0.15)'} transparent`,
         },
 
+        // Prevent iframes from capturing mouse events during grid drag/resize
+        '.grid-interacting iframe': {
+          pointerEvents: 'none',
+        },
+
         // ConsoleWidget — plain HTML lines
         '.console-line': {
           fontSize: '0.7rem',

@@ -32,6 +32,7 @@ export default function GridLayout() {
   const [visibility, setVisibility] = useAtom(widgetVisibilityAtom)
 
   const [windowWidth, setWindowWidth] = useState(window.innerWidth)
+  const [isInteracting, setIsInteracting] = useState(false)
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth)
@@ -80,12 +81,18 @@ export default function GridLayout() {
 
   const currentLayout = visibleLayouts[breakpoint] || []
 
-  const handleInteractionStart = useCallback(() => setUpdatesPaused(true), [])
-  const handleInteractionStop = useCallback(() => setUpdatesPaused(false), [])
+  const handleInteractionStart = useCallback(() => {
+    setUpdatesPaused(true)
+    setIsInteracting(true)
+  }, [])
+  const handleInteractionStop = useCallback(() => {
+    setUpdatesPaused(false)
+    setIsInteracting(false)
+  }, [])
 
   return (
     <ResponsiveGridLayout
-      className="layout grid-layout"
+      className={`layout grid-layout${isInteracting ? ' grid-interacting' : ''}`}
       layouts={visibleLayouts}
       onLayoutChange={onLayoutChange}
       onBreakpointChange={onBreakpointChange}
