@@ -2521,3 +2521,39 @@ Replaced the ChartWidget placeholder with TradingView's free Advanced Chart embe
 - No new npm dependencies added
 
 **Build & lint:** Both pass (0 errors, 5 pre-existing warnings).
+
+## Session: 2026-02-24 — RGL Drag/Resize Performance Investigation
+
+### What Was Done
+
+1. **Orderbook `setUpdatesPaused` API** — Added to `@gloomydumber/crypto-orderbook` (v0.1.4). Module-level pause flag skips RAF flushes to Jotai atoms during grid drag/resize. Same pattern as premium-table. Wired into `GridLayout.tsx` alongside the existing premium-table pause.
+
+2. **`useCSSTransforms={true}`** — Switched from `top`/`left` positioning (reflow) to CSS transforms (compositing). BitMEX (production RGL app) confirmed to use CSS transforms. This is actually the RGL default — it was explicitly set to `false` in earlier development without documented reason.
+
+3. **iframe pointer-events fix** — `.grid-interacting iframe { pointer-events: none }` in GlobalStyles prevents TradingView iframe from stealing mouse events during drag/resize.
+
+### Performance Investigation Status — NEEDS FURTHER TESTING
+
+The drag/resize lag has been present since `rgl-practice` and is not fully resolved. Changes made in this session (orderbook pause, CSS transforms) may help but require systematic benchmarking to confirm.
+
+**To revert to pre-investigation state:** `git revert` this commit, or manually:
+- `GridLayout.tsx`: change `useCSSTransforms={true}` back to `false`
+- `GridLayout.tsx`: revert orderbook pause import + calls (restore single `setUpdatesPaused` from premium-table)
+- `package-lock.json`: `npm install @gloomydumber/crypto-orderbook@0.1.3`
+
+**Recommended next step:** Build an automated drag/resize benchmark (Playwright or similar) that measures frame times, jank%, and memory during programmatic drag/resize — similar to `../rgl-performance-test` but for the full wts-frontend app with all widgets active. This would allow A/B comparison of:
+- `useCSSTransforms` true vs false
+- With/without orderbook pause
+- With/without premium-table pause
+- Widget count variations
+- Production vs dev builds
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/layout/GridLayout.tsx` | `useCSSTransforms={true}`, orderbook `setUpdatesPaused` import + calls |
+| `src/styles/GlobalStyles.tsx` | `.grid-interacting iframe { pointer-events: none }` (from ChartWidget session) |
+| `package-lock.json` | `@gloomydumber/crypto-orderbook` 0.1.3 → 0.1.4 |
+
+**Build & lint:** Both pass (0 errors, 5 pre-existing warnings).

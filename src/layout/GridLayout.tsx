@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { WidthProvider, Responsive, type Layout, type Layouts } from 'react-grid-layout'
 import { useAtom, useSetAtom } from 'jotai'
 import { debounce } from 'lodash'
-import { setUpdatesPaused } from '@gloomydumber/premium-table'
+import { setUpdatesPaused as setPremiumTablePaused } from '@gloomydumber/premium-table'
+import { setUpdatesPaused as setOrderbookPaused } from '@gloomydumber/crypto-orderbook'
 
 import { layoutsAtom, currentBreakpointAtom, widgetVisibilityAtom } from '../store/atoms'
 import {
@@ -82,11 +83,13 @@ export default function GridLayout() {
   const currentLayout = visibleLayouts[breakpoint] || []
 
   const handleInteractionStart = useCallback(() => {
-    setUpdatesPaused(true)
+    setPremiumTablePaused(true)
+    setOrderbookPaused(true)
     setIsInteracting(true)
   }, [])
   const handleInteractionStop = useCallback(() => {
-    setUpdatesPaused(false)
+    setPremiumTablePaused(false)
+    setOrderbookPaused(false)
     setIsInteracting(false)
   }, [])
 
@@ -103,7 +106,7 @@ export default function GridLayout() {
       rowHeight={ROW_HEIGHT}
       width={windowWidth}
       draggableHandle=".drag-handle"
-      useCSSTransforms={false}
+      useCSSTransforms={true}
       breakpoints={BREAKPOINTS}
       cols={COLS}
       resizeHandle={<ResizeHandle />}
