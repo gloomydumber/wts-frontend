@@ -2541,12 +2541,28 @@ The drag/resize lag has been present since `rgl-practice` and is not fully resol
 - `GridLayout.tsx`: revert orderbook pause import + calls (restore single `setUpdatesPaused` from premium-table)
 - `package-lock.json`: `npm install @gloomydumber/crypto-orderbook@0.1.3`
 
-**Recommended next step:** Build an automated drag/resize benchmark (Playwright or similar) that measures frame times, jank%, and memory during programmatic drag/resize — similar to `../rgl-performance-test` but for the full wts-frontend app with all widgets active. This would allow A/B comparison of:
-- `useCSSTransforms` true vs false
-- With/without orderbook pause
-- With/without premium-table pause
-- Widget count variations
-- Production vs dev builds
+**Recommended next step:** Create a dedicated performance testing project at `../rgl-drag-bench` (NOT `rgl-performance-test` — that repo uses simplified colored divs, not real widgets). The new project should:
+
+1. **Copy the full wts-frontend app** — all widgets, real packages (`@gloomydumber/premium-table`, `@gloomydumber/crypto-orderbook`, TradingView embed), real layout config. The point is to benchmark under production-realistic conditions, not isolated toy widgets.
+
+2. **Playwright test harness** — programmatic drag/resize via synthetic mouse events + Chrome DevTools Protocol (CDP) for frame-level metrics. Measure:
+   - Frame time avg / P95 / max
+   - Jank % (frames > 16.7ms)
+   - JS heap during interaction
+   - Time-to-idle after mouse release
+   - GC pause frequency and duration
+
+3. **A/B configuration matrix** — toggle via env vars or URL params:
+   - `useCSSTransforms` true vs false
+   - With/without orderbook `setUpdatesPaused`
+   - With/without premium-table `setUpdatesPaused`
+   - `onLayoutChange` debounce: 0ms / 10ms / 50ms / 100ms / skip-during-drag
+   - Widget count: 4 / 6 / 8 / all
+   - Production build vs dev server
+
+4. **Output** — JSON results per run, summary table comparing all configurations, identify which combination matches BitMEX-level smoothness.
+
+5. **Reference comparison** — optionally run the same Playwright drag/resize test against BitMEX (`https://www.bitmex.com/app/trade/XBTUSD`) to establish a "production smooth" baseline for frame metrics.
 
 ### Files Changed
 
