@@ -75,41 +75,6 @@ export default function GlobalStyles() {
           scrollbarColor: `${isDark ? 'rgba(0, 255, 0, 0.15)' : 'rgba(0, 0, 0, 0.15)'} transparent`,
         },
 
-        // OrderbookWidget — plain HTML, no Emotion churn
-        '.ob-header': {
-          display: 'flex',
-          fontSize: '0.65rem',
-          textTransform: 'uppercase',
-          color: theme.palette.text.secondary,
-          fontWeight: 700,
-          letterSpacing: '0.05em',
-          padding: '2px 4px',
-          background: isDark ? '#0d0d0d' : '#eeeeee',
-        },
-        '.ob-row': {
-          display: 'flex',
-          fontSize: '0.7rem',
-          fontVariantNumeric: 'tabular-nums',
-          padding: '1px 4px',
-          position: 'relative',
-        },
-        '.ob-cell': {
-          flex: 1,
-          position: 'relative',
-          zIndex: 1,
-        },
-        '.ob-right': {
-          textAlign: 'right',
-        },
-        '.ob-spread': {
-          textAlign: 'center',
-          fontSize: '0.65rem',
-          color: theme.palette.text.secondary,
-          padding: '2px 0',
-          borderTop: `1px solid ${theme.palette.divider}`,
-          borderBottom: `1px solid ${theme.palette.divider}`,
-        },
-
         // ConsoleWidget — plain HTML lines
         '.console-line': {
           fontSize: '0.7rem',

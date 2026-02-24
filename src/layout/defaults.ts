@@ -7,7 +7,7 @@ export const WIDGET_REGISTRY: WidgetConfig[] = [
   { id: 'Orderbook', label: 'Orderbook', defaultVisible: true },
   { id: 'PremiumTable', label: 'Premium Table', defaultVisible: true },
   { id: 'Chart', label: 'Chart', defaultVisible: false },
-  { id: 'ExchangeCalc', label: 'Exchange Calculator', defaultVisible: false },
+  { id: 'ExchangeCalc', label: 'Exchange Calculator', defaultVisible: true },
   { id: 'Dex', label: 'DEX', defaultVisible: true },
   { id: 'Memo', label: 'Memo', defaultVisible: false },
   { id: 'Shortcut', label: 'Shortcut', defaultVisible: false },
@@ -33,19 +33,21 @@ export function getCurrentBreakpoint(width: number): string {
 
 // Default layouts per breakpoint
 const lgLayout: WidgetLayoutItem[] = [
-  { i: 'Console', x: 0, y: 0, w: 4, h: 6, permanent: true },
-  { i: 'Cex', x: 0, y: 6, w: 8, h: 12 },
-  { i: 'Dex', x: 0, y: 18, w: 8, h: 12 },
-  { i: 'Orderbook', x: 4, y: 0, w: 4, h: 6 },
-  { i: 'PremiumTable', x: 8, y: 0, w: 4, h: 9, minW: 3 },
+  { i: 'Console', x: 0, y: 0, w: 4, h: 6 },
+  { i: 'Cex', x: 4, y: 0, w: 8, h: 12 },
+  { i: 'Dex', x: 4, y: 12, w: 8, h: 12 },
+  { i: 'Orderbook', x: 0, y: 12, w: 4, h: 9 },
+  { i: 'PremiumTable', x: 0, y: 6, w: 4, h: 6, minW: 3 },
+  { i: 'ExchangeCalc', x: 0, y: 21, w: 3, h: 6 },
 ]
 
 const mdLayout: WidgetLayoutItem[] = [
-  { i: 'Console', x: 0, y: 0, w: 5, h: 6, permanent: true },
+  { i: 'Console', x: 0, y: 0, w: 5, h: 6 },
   { i: 'Cex', x: 0, y: 6, w: 10, h: 12 },
   { i: 'Dex', x: 0, y: 18, w: 10, h: 12 },
   { i: 'Orderbook', x: 5, y: 0, w: 5, h: 6 },
   { i: 'PremiumTable', x: 0, y: 30, w: 5, h: 9, minW: 3 },
+  { i: 'ExchangeCalc', x: 5, y: 30, w: 3, h: 9 },
 ]
 
 const smLayout: WidgetLayoutItem[] = [
@@ -54,6 +56,7 @@ const smLayout: WidgetLayoutItem[] = [
   { i: 'Dex', x: 0, y: 19, w: 6, h: 14 },
   { i: 'Orderbook', x: 0, y: 33, w: 6, h: 8 },
   { i: 'PremiumTable', x: 0, y: 41, w: 6, h: 9 },
+  { i: 'ExchangeCalc', x: 0, y: 50, w: 3, h: 9 },
 ]
 
 const xsLayout: WidgetLayoutItem[] = [
@@ -62,6 +65,7 @@ const xsLayout: WidgetLayoutItem[] = [
   { i: 'Dex', x: 0, y: 19, w: 4, h: 14, isResizable: false, isDraggable: false },
   { i: 'Orderbook', x: 0, y: 33, w: 4, h: 8, isResizable: false, isDraggable: false },
   { i: 'PremiumTable', x: 0, y: 41, w: 4, h: 9, isResizable: false, isDraggable: false },
+  { i: 'ExchangeCalc', x: 0, y: 50, w: 3, h: 9, isResizable: false, isDraggable: false },
 ]
 
 const xxsLayout: WidgetLayoutItem[] = [
@@ -70,6 +74,7 @@ const xxsLayout: WidgetLayoutItem[] = [
   { i: 'Dex', x: 0, y: 19, w: 2, h: 14, isResizable: false, isDraggable: false },
   { i: 'Orderbook', x: 0, y: 33, w: 2, h: 8, isResizable: false, isDraggable: false },
   { i: 'PremiumTable', x: 0, y: 41, w: 2, h: 9, isResizable: false, isDraggable: false },
+  { i: 'ExchangeCalc', x: 0, y: 50, w: 2, h: 9, isResizable: false, isDraggable: false },
 ]
 
 export const defaultLayouts: Layouts = {

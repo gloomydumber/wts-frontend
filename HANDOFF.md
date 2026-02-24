@@ -10,28 +10,29 @@ A Single Page Application that unifies ALL CEX/DEX crypto trading features into 
 |---------|------|-------------------|
 | `rgl-practice` | `../rgl-practice` | Layout system, react-grid-layout usage, responsive breakpoints, grid config, state management patterns, AppBar/Drawer UX |
 | `premium-table-refactored` | `../premium-table-refactored` | Published npm package (GitHub Packages), arbitrage table component, design system (primary reference for styling) |
-| `usdt-krw-calculator` | `../usdt-krw-calculator` | Exchange calculator component, RxJS patterns, needs refactoring into package like premium-table-refactored |
+| `crypto-orderbook` | `../crypto-orderbook` | Published npm package (GitHub Packages), real-time orderbook widget for 6 exchanges (Upbit, Bithumb, Binance, Bybit, OKX, Coinbase) |
+| `crypto-exchange-rate-calculator` | `../crypto-exchange-rate-calculator` | Published npm package (GitHub Packages), USDTKRW exchange rate calculator |
 | `teamLVR_API_Trading_System` | `../teamLVR_API_Trading_System` | **Legacy WTS (deprecated)** — pure HTML/CSS/JS, Express backend. Feature reference for what was already built. Some exchange APIs are deprecated. See [Legacy WTS Reference](#legacy-wts-reference) below. |
 
 ---
 
 ## Phase 1: Frontend PoC (This Project's Scope)
 
-Build a fully working frontend with **mock data only**. Validate the widget system, layout UX, and workspace management. **No API calls in this phase** — all exchange API requests will be implemented in Rust during Tauri integration (Phase 2). This means no CORS concerns, no proxy setup, no API keys in the frontend.
+Build a fully working frontend. Most widgets use mock data, but three use live data via published npm packages: OrderbookWidget (`@gloomydumber/crypto-orderbook`), PremiumTableWidget (`@gloomydumber/premium-table`), and ExchangeCalcWidget (`@gloomydumber/crypto-exchange-rate-calculator`). In Phase 2, remaining mock widgets will be connected to real APIs via Tauri + Rust backend.
 
 Widgets should be designed with clear data interfaces (TypeScript types for props/state) so that swapping mock data for real Tauri `invoke()` calls later is trivial.
 
 ### Frontend Widget Roadmap
 
-- [ ] OrderWidget — place orders on any CEX (mock or direct API)
-- [ ] BalanceWidget — aggregated balances across exchanges
-- [ ] OrderbookWidget — live orderbook display
-- [x] PremiumTableWidget — imported from `@gloomydumber/premium-table` package (live WebSocket)
-- [ ] ExchangeCalcWidget — USDTKRW calculator (import from separately published package; refactoring done outside this repo)
-- [ ] WalletWidget — DEX wallet management UI
-- [ ] SwapWidget — DEX swap interface
-- [ ] TransferWidget — cross-exchange transfer UI
-- [ ] ChartWidget — price charts (TradingView lightweight-charts)
+- [x] ConsoleWidget — timestamped operation log with centralized logging service
+- [x] CexWidget — CEX trading panel with mock order/deposit/withdraw/transfer/margin tabs
+- [x] OrderbookWidget — live orderbook display (imported from `@gloomydumber/crypto-orderbook` package, real WebSocket)
+- [x] PremiumTableWidget — imported from `@gloomydumber/premium-table` package (real WebSocket)
+- [x] ExchangeCalcWidget — imported from `@gloomydumber/crypto-exchange-rate-calculator` package (real data)
+- [x] DexWidget — DEX panel with mock swap/perps/balance/wallet/DApp browser tabs
+- [x] MemoWidget — persistent user notes (localStorage)
+- [x] ShortcutWidget — quick links to exchange trading pages by ticker
+- [ ] ChartWidget — price charts (TradingView lightweight-charts) — placeholder only
 
 ### Widget Behavior (Port from `rgl-practice`)
 
@@ -1618,14 +1619,14 @@ MEXC:      HMAC-SHA256 with Unix timestamp
 
 ### Updated Widget List (After Legacy Review)
 
-Adding widgets discovered from legacy features:
+Widgets discovered from legacy features — now integrated as tabs within CexWidget/DexWidget or as standalone widgets:
 
-- [ ] **MarginWidget** — spot↔margin transfer, borrow, repay, max borrowable/transferable
-- [ ] **DepositWidget** — deposit address fetch/generation, multi-network, memo/tag, copy
-- [ ] **WithdrawWidget** — withdrawal with network selection, fee display, address + memo
-- [ ] **ConsoleWidget** — timestamped operation log, scrollable history
-- [ ] **MemoWidget** — persistent user notes (or integrate into Drawer)
-- [ ] **ShortcutWidget** — quick links to exchange trading pages by ticker
+- [x] **MarginWidget** — integrated as MarginTab inside CexWidget (mock data)
+- [x] **DepositWidget** — integrated as DepositTab inside CexWidget (mock data)
+- [x] **WithdrawWidget** — integrated as WithdrawTab inside CexWidget (mock data)
+- [x] **ConsoleWidget** — timestamped operation log with centralized logging service
+- [x] **MemoWidget** — persistent user notes (localStorage)
+- [x] **ShortcutWidget** — quick links to exchange trading pages by ticker
 
 ---
 
@@ -2354,3 +2355,119 @@ All log messages include exact exchange/chain name prefix (e.g., `[Binance]`, `[
 | `CLAUDE.md` | Updated ExchangeWidget → CexWidget reference |
 
 **Build & lint:** Build passes. Lint passes (0 errors, 5 pre-existing warnings).
+
+## Session: 2026-02-24 — Orderbook Tick Options Fix + Loading Skeleton
+
+**Project:** `crypto-orderbook` (sibling project, not wts-frontend)
+
+### Problem
+On page refresh with Upbit/Bithumb selected, tick options never appeared. Root causes:
+1. `atomWithStorage` hydration race: stored `tickSize` loads before `nativeTickRef` resolves, causing `serverLevel` to compute non-zero → effect re-runs → aborts in-flight `fetchSupportedLevels`
+2. No fallback if the instruments API fails — tick options stay empty forever
+
+### Changes
+
+1. **`src/hooks/useOrderbook.ts`** — Added retry + fallback for `fetchSupportedLevels`:
+   - Wraps API call with 1 retry (2s delay) before giving up
+   - On final failure: resets `serverLevelsRef.current = null` to enable client-side tick options as fallback
+   - Existing `hasServerGrouping` guard (requires `length > 0`) already prevents the hydration race
+
+2. **`src/components/OrderbookDisplay/OrderbookSkeleton.tsx`** — **NEW**: Loading skeleton component
+   - Reads `depthAtom` for row count per side
+   - MUI `<Skeleton variant="text" animation="wave" />` for 3 columns per row
+   - Skeleton spread row in center
+
+3. **`src/components/OrderbookDisplay/OrderbookDisplay.tsx`** — Show skeleton when loading
+   - When `bids.length === 0 && asks.length === 0`: renders `<ColumnHeaders />` + `<OrderbookSkeleton />`
+
+4. **`src/components/OrderbookToolbar/TickSelector.tsx`** — Skeleton for tick selector
+   - When `options.length === 0`: returns `<Skeleton variant="rounded" width={70} height={28} />` instead of `null`
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/hooks/useOrderbook.ts` | Retry + fallback for `fetchSupportedLevels` |
+| `src/components/OrderbookDisplay/OrderbookSkeleton.tsx` | **NEW** — Loading skeleton matching OrderbookRow dimensions |
+| `src/components/OrderbookDisplay/OrderbookDisplay.tsx` | Show skeleton when no data |
+| `src/components/OrderbookToolbar/TickSelector.tsx` | Skeleton placeholder instead of null |
+
+**Build & lint:** Both pass clean (crypto-orderbook project).
+
+## Session: 2026-02-24 — Orderbook Widget Integration (crypto-orderbook → wts-frontend)
+
+### What Was Done
+
+Replaced the mock OrderbookWidget with the real `@gloomydumber/crypto-orderbook` package (live WebSocket orderbook for 6 exchanges). The package was developed in the sibling `crypto-orderbook` project, published to GitHub Packages, and integrated into wts-frontend.
+
+### crypto-orderbook Changes (v0.1.0 → v0.1.3)
+
+Full details in `../crypto-orderbook/HANDOFF.md`. Key changes made during this session:
+
+1. **Tick options pre-loaded via REST APIs** — moved all tick option computation from live WS data into the connection effect using exchange REST endpoints (`fetchNativeTick` on Binance/Bybit/OKX/Coinbase)
+2. **StrictMode double-mount fix** — React 18 StrictMode caused `fetchSupportedLevels` to be skipped on remount; fixed with `needsLevelFetch` check
+3. **Depth selector removed** — render depth capped at 50 rows, no user-facing selector
+4. **Edge padding** — outermost price levels show qty=0 when they vanish to prevent visual jitter
+5. **BaseSelector → Autocomplete** — searchable dropdown for 100+ trading pairs
+6. **Scrollbar styling** — thin green scrollbar matching wts-frontend, visible only on hover
+7. **overflow: hidden** on bid/ask sections — fixed scroll drift issue with column-reverse
+8. **Row height increased** — 22px line-height, 0.75rem font for readability
+9. **Settings icon removed** — `showHeader` prop controls title visibility
+10. **Explicit font sizes on Select/MenuItem** — 0.75rem to prevent theme inheritance issues
+11. **Tick option deduplication** — `[...new Set(options)]` prevents duplicate entries
+
+### wts-frontend Changes
+
+#### OrderbookWidget Integration
+
+Replaced the entire mock implementation (134 lines of random data generation + manual DOM rendering) with a 3-line wrapper around the published package:
+
+```tsx
+import { Orderbook } from '@gloomydumber/crypto-orderbook'
+import '@gloomydumber/crypto-orderbook/style.css'
+
+export default function OrderbookWidget() {
+  const theme = useTheme()
+  return <Orderbook height="100%" theme={theme} showHeader={false} />
+}
+```
+
+The component passes the wts-frontend MUI theme through so it inherits dark/light mode, colors, and fonts. `showHeader={false}` hides the redundant "ORDERBOOK" title since wts-frontend has its own drag-handle header.
+
+#### Orphaned CSS Cleanup
+
+Removed `.ob-header`, `.ob-row`, `.ob-cell`, `.ob-right`, `.ob-spread` global CSS classes from `GlobalStyles.tsx` — these were only used by the mock widget.
+
+#### Default Layout Updated
+
+Updated `lg` breakpoint layout to match user-specified arrangement:
+- Console: (0,0) 4x6
+- PremiumTable: (0,6) 4x6
+- Orderbook: (0,12) 4x9
+- ExchangeCalc: (0,21) 3x6
+- Cex: (4,0) 8x12
+- Dex: (4,12) 8x12
+
+Also updated `md` layout accordingly.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/components/widgets/OrderbookWidget/index.tsx` | Replaced mock with `@gloomydumber/crypto-orderbook` |
+| `src/styles/GlobalStyles.tsx` | Removed `.ob-*` CSS classes |
+| `src/layout/defaults.ts` | Updated `lg` and `md` default layouts |
+| `package.json` | Added `@gloomydumber/crypto-orderbook: ^0.1.0` dependency |
+| `package-lock.json` | Updated lockfile |
+
+### Dependencies Added
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `@gloomydumber/crypto-orderbook` | ^0.1.0 (installed 0.1.3) | Live orderbook widget for 6 exchanges |
+
+### Widget Roadmap Update
+
+- [x] **OrderbookWidget** — now live with real WebSocket data from `@gloomydumber/crypto-orderbook`
+
+**Build & lint:** Both pass (0 errors, 5 pre-existing warnings).
