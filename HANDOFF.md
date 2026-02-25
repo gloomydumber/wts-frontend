@@ -2621,8 +2621,167 @@ The drag/resize lag has been present since `rgl-practice` and is not fully resol
 | File | Change |
 |------|--------|
 | `src/layout/GridLayout.tsx` | Removed `lodash` import, `debounce` wrapper, `JSON.stringify` comparison. `onLayoutChange` is now a direct `setLayouts`. |
+| `package.json` / `package-lock.json` | Removed `lodash` and `@types/lodash` dependencies |
+| `CLAUDE.md` | Updated with current architecture, live widgets, onLayoutChange note, OOM note |
 | `HANDOFF.md` | Benchmark findings + RGL source audit in Performance Notes, this session log |
 
 **Bundle size:** 1,450 KB → 1,372 KB (-78 KB, lodash removed).
 
 **Build & lint:** Both pass (0 errors, 5 pre-existing warnings).
+
+**Commit:** `10ef218` — squashed from 3 commits (`perf: remove redundant debounce...`, `chore: remove lodash dependency`, `docs: update CLAUDE.md...`).
+
+5. **Fixed resize handle z-index** — Added `zIndex: 10` to `ResizeHandle.tsx` so the handle floats above widget content (orderbook sell-side total was blocking clicks).
+
+6. **Investigated orderbook performance for future optimization** — Audited `@gloomydumber/crypto-orderbook` rendering architecture and researched react-virtuoso div vs table approaches. Findings documented below.
+
+### Orderbook Optimization Plan (Future Work — `crypto-orderbook` package)
+
+**Problem:** Orderbook widget is slightly laggier during grid drag/resize than static widgets, and renders all 100 rows (50 bids + 50 asks) on every WebSocket tick even when most are off-screen.
+
+**Current architecture (crypto-orderbook v0.1.x):**
+- Div-based rows (not table) — `<div>` + 3 `<span>` per row, flexbox layout
+- No virtualization — all 50+50 rows in DOM, clipped via `overflow: hidden`
+- RAF-batched updates — WS messages accumulate in Map, single `setState` per frame
+- `React.memo` on `OrderbookRow` — but defeated by `maxQty` prop changing every render (recalculated from all entries), forcing all 100 rows to re-render on every tick
+- Depth bars: absolutely positioned `<div>` with `width: ${pct}%`
+
+**Three optimization tiers (in order of effort/impact):**
+
+| Tier | Approach | Effort | Expected impact |
+|------|----------|--------|----------------|
+| **1** | **Add react-virtuoso to orderbook** | Medium | Only render visible rows (~15-20 instead of 100). Use `Virtuoso` (div-based, not `TableVirtuoso`) with `fixedItemHeight` to skip measurement. `computeItemKey` by price for stable React keys. Already installed in wts-frontend. |
+| **2** | **Fix maxQty prop churn** | Low | Stabilize `maxQty` (e.g., quantize to nearest 5%, or move bar width calc inside row). Currently defeats `React.memo` — all 100 rows re-render when any single qty changes. Fixing this reduces re-renders from ~100 to ~1-5 per tick. |
+| **3** | **Canvas-based orderbook** | High | Build `crypto-orderbook-canvas` as separate benchmark project. Single `<canvas>` element, zero DOM reflow. Overkill for 50 rows but would match professional trading UIs (Bookmap, Quantower). Only pursue if tier 1+2 are insufficient. |
+
+**BitMEX reference:** BitMEX uses two separate `<table>` elements for bids/asks. This is compatible with `TableVirtuoso` if we want semantic table markup. However, div-based `Virtuoso` is marginally faster for fixed-column layouts since it skips table layout negotiation.
+
+**react-virtuoso key props for orderbook:**
+- `fixedItemHeight={22}` — critical, skips ResizeObserver per row
+- `computeItemKey={(_, row) => row.price}` — stable keys for efficient React diffing
+- `overscan={150}` — prevents blank flashing during fast scroll
+- Already installed: `react-virtuoso@4.18.1`
+
+**Recommendation:** Start with **tier 2** (fix maxQty churn — low effort, high impact), then **tier 1** (virtuoso — medium effort). Only attempt **tier 3** (canvas) if the first two are insufficient.
+
+---
+
+### 2026-02-25: Orderbook Virtualization + maxQty Fix (crypto-orderbook v0.2.0)
+
+**Goal:** Implement tier 2 (maxQty stabilization) and tier 1 (react-virtuoso) in the `@gloomydumber/crypto-orderbook` package.
+
+**Changes in `../crypto-orderbook`:**
+
+1. **maxQty power-of-2 quantization** (`OrderbookDisplay.tsx`) — `maxQty` now quantized to nearest power of 2 via `Math.pow(2, Math.ceil(Math.log2(rawMax)))`. Only changes when largest order magnitude doubles or halves (~every few seconds instead of every tick). `React.memo` on `OrderbookRow` now actually skips re-renders for unchanged rows.
+
+2. **react-virtuoso integration** (`OrderbookDisplay.tsx`) — Replaced manual `.map()` for both asks and bids with `Virtuoso` instances:
+   - `fixedItemHeight={26}` (22px lineHeight + 4px padding)
+   - `overscan={150}` to prevent blank flashing
+   - `computeItemKey` by price for stable React keys
+   - Asks: reversed array + `initialTopMostItemIndex={length-1}` + `followOutput="auto"` (replaces `column-reverse` CSS which Virtuoso doesn't support)
+   - Bids: straightforward top-down rendering
+
+3. **Package config** — Added `react-virtuoso` to `peerDependencies` and `devDependencies` in `package.json`, added to `rollupOptions.external` in `vite.config.ts`. Version bumped `0.1.4` → `0.2.0` (MINOR — new peer dep is breaking for consumers).
+
+**Changes in wts-frontend:**
+- `package.json` — Bumped `@gloomydumber/crypto-orderbook` to `^0.2.0` (react-virtuoso already installed as `^4.18.1`)
+
+**Files changed (crypto-orderbook):**
+
+| File | Change |
+|------|--------|
+| `package.json` | react-virtuoso peer+dev dep, version 0.2.0 |
+| `vite.config.ts` | react-virtuoso in rollup externals |
+| `src/components/OrderbookDisplay/OrderbookDisplay.tsx` | maxQty quantization, Virtuoso for asks+bids |
+
+**Files changed (wts-frontend):**
+
+| File | Change |
+|------|--------|
+| `package.json` | `@gloomydumber/crypto-orderbook` → `^0.2.0` |
+| `HANDOFF.md` | Session log |
+
+**Build & lint:** Both pass in crypto-orderbook (`npm run build:lib`, `npm run lint`).
+
+**Next steps:** Publish crypto-orderbook v0.2.0, `npm install` in wts-frontend, visual verification (asks lowest near spread, smooth scroll, exchange switching, tick size changes).
+
+---
+
+### 2026-02-25: Fix Virtuoso Shrink Issue (crypto-orderbook v0.3.1, premium-table v0.5.1)
+
+**Problem:** Virtuoso with `overflow: hidden` (orderbook) or `useContainerHeight` wrapper (premium-table) cannot detect when the container shrinks. DOM elements rendered during widget expand persist after shrink. For orderbook, the asks (sell) side worked by accident because `followOutput="auto"` forced recalculation, but bids (buy) side retained stale DOM nodes.
+
+**Fixes:**
+
+1. **crypto-orderbook v0.3.1** — Dropped Virtuoso entirely. Reverted to `.map()` + `overflow: hidden` (the pre-v0.2.0 approach). CSS `overflow: hidden` clips rows naturally — asks use `column-reverse` (lowest near spread), bids render top-down (highest near spread). `maxQty` power-of-2 quantization retained. Removed `react-virtuoso` from peer/dev deps.
+
+2. **premium-table v0.5.1** — Kept Virtuoso but fixed the approach: removed the `useContainerHeight` wrapper that interfered with Virtuoso's internal ResizeObserver. `TableVirtuoso` gets `height: '100%'` directly. Hidden scrollbar via CSS (`scrollbar-width: none` + `::-webkit-scrollbar { display: none }`). Scrolling still works via mouse wheel.
+
+**Files changed (crypto-orderbook):**
+
+| File | Change |
+|------|--------|
+| `OrderbookDisplay.tsx` | Reverted to `.map()` + `overflow: hidden`, removed Virtuoso |
+| `package.json` | Removed react-virtuoso, version 0.3.0 → 0.3.1 |
+| `vite.config.ts` | Removed react-virtuoso from externals |
+| `HANDOFF.md` | Updated design decisions, performance notes, session log |
+
+**Files changed (premium-table):**
+
+| File | Change |
+|------|--------|
+| `ArbitrageTable.tsx` | Removed `useContainerHeight`, direct `height: '100%'` |
+| `lib-styles.css` | Hidden scrollbar CSS |
+| `grid-overrides.css` | Hidden scrollbar CSS (dev) |
+| `package.json` | Version 0.5.0 → 0.5.1 |
+| `HANDOFF.md` | Session log |
+
+**wts-frontend:** Will use `@gloomydumber/crypto-orderbook@^0.3.1` and `@gloomydumber/premium-table@^0.5.1` after publish.
+
+---
+
+### 2026-02-25: Fix useContainerHeight Timing (crypto-orderbook v0.3.3, premium-table v0.5.3)
+
+**Problem:** v0.3.2 (orderbook) rendered nothing — only headers and spread visible. v0.5.2 (premium-table) rendered all rows without virtualization. Both had the same root cause: `useContainerHeight` used `useRef` + `useEffect([], [])`. The effect runs once on mount, but when the component has an early return (loading state), the ref target isn't in the DOM → height stays 0 → conditional render blocks Virtuoso/rows.
+
+**Fix (both packages):** Replaced `useRef` + `useEffect` with **callback ref pattern** — `useCallback((node) => { if (node) observe(node); else cleanup(); }, [])`. Fires when DOM element attaches/detaches regardless of timing.
+
+**crypto-orderbook v0.3.3 — additional change:** Dropped Virtuoso entirely, switched to array slicing. `Math.floor(containerHeight / ROW_HEIGHT)` determines visible row count → `orderbook.asks.slice(0, askCount)` + `.map()`. No scroll, no library. Widget resize immediately changes visible count via ResizeObserver. Removed `react-virtuoso` from deps.
+
+**premium-table v0.5.3:** Kept `TableVirtuoso` with explicit pixel height + conditional render (`{containerHeight > 0 && <TableVirtuoso>}`). The callback ref fix ensures height is measured correctly.
+
+**wts-frontend:** Upgraded to `@gloomydumber/crypto-orderbook@0.3.3` and `@gloomydumber/premium-table@0.5.3`. Build passes.
+
+---
+
+### 2026-02-25: Fix Virtuoso Shrink Row Cleanup (premium-table v0.5.12)
+
+**Problem:** When a PremiumTableWidget is expanded (via RGL drag resize) and then shrunk back, react-virtuoso's `TableVirtuoso` does not remove excess DOM rows. Rows rendered during expansion persist in DOM after shrink, continuing to process WebSocket updates and degrading performance.
+
+**Root cause:** react-virtuoso v4's internal `visibleRange` calculation (line 1384 in `dist/index.mjs`) has a directional filter that only emits new ranges when list boundaries cross *outside* the viewport (expansion). On shrink, boundaries go further outside, so the filter returns `null` and the range stays unchanged — excess rows persist.
+
+**Fix (two-part):**
+
+1. **Consumer-side: pixel height via ResizeObserver** (`PremiumTableWidget/index.tsx`) — Added `useContainerHeight` hook using callback ref + ResizeObserver. Measures container pixel height and passes it to `<PremiumTable height={height}>` instead of `height="100%"`. Percentage heights inside flex layouts don't reliably propagate to the library's internal ResizeObserver.
+
+2. **Library-side: debounced React key on shrink** (`ArbitrageTable.tsx` in premium-table v0.5.12) — When `height` prop decreases, a 150ms debounced timer bumps `virtuosoKey` state. `<TableVirtuoso key={virtuosoKey}>` forces a full remount with the correct viewport size. Content stays visible during drag; remount fires once after resize settles.
+
+**Approaches tried and failed (v0.5.5–v0.5.10):**
+- Synthetic scroll events — Virtuoso reads `scrollTop` which hasn't changed
+- `scrollTop` nudge (+1px/-1px) — directional filter still blocks
+- `scrollTo()` imperative API — downstream `V()` dedup filters block republication
+- Debounced key with `height="100%"` — percentage height not resolving to pixel changes
+- Plain `<div>` Scroller (replacing MUI TableContainer) — not the issue
+- CSS changes (hidden scrollbar, max-height) — no effect on range calculation
+
+**Automated test:** Playwright test in `wts-frontend-rgl-bench` confirms fix: Initial 7 rows → Expand to 14 rows → Shrink back to 7 rows. Full report at `../wts-frontend-rgl-bench/results/VIRTUOSO_SHRINK_REPORT.md`.
+
+**Files changed (wts-frontend):**
+
+| File | Change |
+|------|--------|
+| `src/components/widgets/PremiumTableWidget/index.tsx` | Added `useContainerHeight` ResizeObserver hook; passes pixel height to `<PremiumTable>` |
+| `src/styles/ResizeHandle.tsx` | Added `zIndex: 10` so resize handle floats above widget content |
+| `package.json` | `@gloomydumber/crypto-orderbook` → `^0.3.3`, `@gloomydumber/premium-table` → `^0.5.12` |
+
+**Build & lint:** Both pass.

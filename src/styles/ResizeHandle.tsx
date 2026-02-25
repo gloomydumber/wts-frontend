@@ -28,6 +28,7 @@ const ResizeHandle = React.forwardRef<
         backgroundImage: theme.palette.mode === 'dark' ? darkHandle : lightHandle,
         backgroundPosition: 'bottom right',
         padding: '0 3px 3px 0',
+        zIndex: 10,
       }}
     />
   )
