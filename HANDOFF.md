@@ -32,7 +32,7 @@ Widgets should be designed with clear data interfaces (TypeScript types for prop
 - [x] DexWidget — DEX panel with mock swap/perps/balance/wallet/DApp browser tabs
 - [x] MemoWidget — persistent user notes (localStorage)
 - [x] ShortcutWidget — quick links to exchange trading pages by ticker
-- [x] ChartWidget — TradingView Advanced Chart embed (free widget, full charting)
+- [x] ChartWidget — TradingView Advanced Chart embed (free widget, full charting) + Lightweight Charts tab (6 exchange kline REST APIs)
 
 ### Widget Behavior (Port from `rgl-practice`)
 
@@ -2785,3 +2785,47 @@ The drag/resize lag has been present since `rgl-practice` and is not fully resol
 | `package.json` | `@gloomydumber/crypto-orderbook` → `^0.3.3`, `@gloomydumber/premium-table` → `^0.5.12` |
 
 **Build & lint:** Both pass.
+
+### 2026-02-26: ChartWidget Technical Indicators (MA, EMA, BB, RSI, MACD)
+
+**Goal:** Add 5 core technical indicators to the Custom Chart tab's LightweightChart.
+
+**What was built:**
+
+- **`indicators.ts`** (new) — Pure computation functions: `computeSMA(20)`, `computeEMA(50)`, `computeBollingerBands(20, 2σ)`, `computeRSI(14, Wilder's smoothing)`, `computeMACD(12,26,9)`. No React/chart imports.
+- **`types.ts`** — Added `IndicatorId`, `IndicatorConfig`, `DEFAULT_INDICATORS` (all disabled by default).
+- **`ChartToolbar.tsx`** — Added "Indicators" button with MUI `Menu` dropdown. Each `MenuItem` has checkbox toggle + native `<input type="color">` with `e.stopPropagation()` to prevent toggle on color pick.
+- **`LightweightChart.tsx`** — Indicator series lifecycle via `useEffect([indicators, candles])`. Overlay indicators (MA, EMA, BB) use `chart.addSeries(LineSeries)` on main pane. Sub-pane indicators (RSI, MACD) use `chart.addPane()` + `setStretchFactor(0.2)`. Series created/removed on toggle, colors updated via `applyOptions()`. BB middle line uses `LineStyle.Dashed`. MACD histogram colored green/red. `ChartHandle` extended with `updateIndicators()`.
+- **`index.tsx`** — `indicators` state with `handleIndicatorToggle`/`handleIndicatorColorChange`. Props passed to both `ChartToolbar` and `LightweightChart`. Streaming callback calls `handle.updateIndicators()` via `queueMicrotask` to recompute.
+
+**Iterative refinements:**
+- Disabled `lastValueVisible` and `priceLineVisible` on all indicator series to avoid cluttering the price scale
+- Theme change no longer recreates the chart — uses `chart.applyOptions()` + `candleSeries.applyOptions()` in-place (TradingView embed still reloads — external iframe limitation)
+- Sub-pane removal (RSI/MACD) fixed: `chart.removePane()` called first instead of removing individual series, which left stale pane separator lines
+- MACD histogram uses theme-consistent colors (same semi-transparent up/down colors as volume) instead of hardcoded green/red
+- Volume auto-hides when MACD is enabled (avoids visual clutter of two histogram areas), restores on MACD toggle-off
+- MA expanded from single MA(20) to 4 periods: MA(20) orange, MA(60) purple, MA(120) teal, MA(200) red — each independently toggleable
+- Removed `priceFormat: { type: 'volume' }` from MACD histogram (wrong format for MACD values)
+
+**Performance:** 300 candles × 8 indicators = ~2400 arithmetic ops per tick — sub-millisecond. Full `setData()` on 300-point line series <1ms.
+
+**Build & lint:** Both pass (0 errors, pre-existing warnings only).
+
+### 2026-02-26: Update crypto-orderbook v0.3.6, premium-table v0.5.13
+
+**crypto-orderbook v0.3.6 — Binance Snapshot/Diff Sync + Crossed-Book Detection:**
+- Binance snapshot/diff sequencing: WS diffs buffered until REST snapshot resolves, drained per Binance's official protocol (sequence ID validation)
+- Crossed-book detection: universal safety net in `flushOrderbook` — if `bestAsk < bestBid`, prunes stale side
+- Edge padding self-perpetuation fix: capture actual data edges before padding to prevent re-padding every flush
+- Reconnection re-sync: `onOpen` detects reconnection and re-fetches snapshot
+
+**premium-table v0.5.13 — Scrollbar Styling Fix:**
+- Removed hardcoded gray scrollbar styles from `.pt-scroller` in library CSS — now defers to host app's global scrollbar styles
+- wts-frontend's theme-aware green scrollbars now apply consistently to premium table
+
+**Files changed (wts-frontend):**
+
+| File | Change |
+|------|--------|
+| `package.json` | `@gloomydumber/crypto-orderbook` → `^0.3.6`, `@gloomydumber/premium-table` → `^0.5.13` |
+| `package-lock.json` | Updated lockfile |
