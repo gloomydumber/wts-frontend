@@ -9,7 +9,7 @@ import { useKlineStream } from './useKlineStream'
 import type { Candle, IndicatorConfig, IndicatorId } from './types'
 import { DEFAULT_INDICATORS } from './types'
 
-const DEFAULT_EXCHANGE = KLINE_EXCHANGES[0]
+const DEFAULT_EXCHANGE = KLINE_EXCHANGES.find((e) => e.id === 'binance')!
 const KLINE_LIMIT = 300
 
 // Module-level pause control (same pattern as npm widget packages)
@@ -23,7 +23,7 @@ function ChartWidget() {
   const [exchangeId, setExchangeId] = useState(DEFAULT_EXCHANGE.id)
   const [quote, setQuote] = useState(DEFAULT_EXCHANGE.quoteCurrencies[0])
   const [base, setBase] = useState('BTC')
-  const [interval, setInterval] = useState('1h')
+  const [interval, setInterval] = useState('4h')
   const [candles, setCandles] = useState<Candle[]>([])
   const [availablePairs, setAvailablePairs] = useState<string[]>([])
   const [loading, setLoading] = useState(false)

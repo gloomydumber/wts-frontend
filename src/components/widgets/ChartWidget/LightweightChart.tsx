@@ -56,6 +56,12 @@ interface LightweightChartProps {
   onChartReady?: (handle: ChartHandle) => void
 }
 
+// lightweight-charts has no timezone support — offset timestamps to display KST
+const KST_OFFSET = 9 * 3600
+function kst(time: number): UTCTimestamp {
+  return (time + KST_OFFSET) as UTCTimestamp
+}
+
 function buildLineData(
   candles: Candle[],
   values: (number | null)[],
@@ -63,7 +69,7 @@ function buildLineData(
   const data: LineData<UTCTimestamp>[] = []
   for (let i = 0; i < values.length; i++) {
     if (values[i] !== null) {
-      data.push({ time: candles[i].time as UTCTimestamp, value: values[i]! })
+      data.push({ time: kst(candles[i].time), value: values[i]! })
     }
   }
   return data
@@ -123,7 +129,7 @@ function applyIndicatorData(
     for (let i = 0; i < result.histogram.length; i++) {
       if (result.histogram[i] !== null) {
         histData.push({
-          time: candles[i].time as UTCTimestamp,
+          time: kst(candles[i].time),
           value: result.histogram[i]!,
           color: result.histogram[i]! >= 0 ? posColor : negColor,
         })
@@ -186,10 +192,13 @@ function LightweightChart({ candles, error, indicators, onChartReady }: Lightwei
         timeVisible: true,
         secondsVisible: false,
       },
+      localization: {
+        locale: 'en-US',
+      },
     })
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor,
+      upColor: isDark ? 'transparent' : upColor,
       downColor,
       borderUpColor: upColor,
       borderDownColor: downColor,
@@ -216,17 +225,22 @@ function LightweightChart({ candles, error, indicators, onChartReady }: Lightwei
     onChartReady?.({
       updateCandle: (c: Candle) => {
         candleSeries.update({
-          time: c.time as UTCTimestamp,
+          time: kst(c.time),
           open: c.open,
           high: c.high,
           low: c.low,
           close: c.close,
         })
+        const dark = isDarkRef.current
+        const plColor = c.close >= c.open
+          ? dark ? '#00FF00' : '#EF5350'
+          : dark ? '#FF0000' : '#42A5F5'
+        candleSeries.applyOptions({ priceLineColor: plColor })
       },
       updateVolume: (c: Candle) => {
         const dark = isDarkRef.current
         volumeSeries.update({
-          time: c.time as UTCTimestamp,
+          time: kst(c.time),
           value: c.volume,
           color:
             c.close >= c.open
@@ -267,7 +281,7 @@ function LightweightChart({ candles, error, indicators, onChartReady }: Lightwei
     })
 
     candleSeries.applyOptions({
-      upColor,
+      upColor: isDark ? 'transparent' : upColor,
       downColor,
       borderUpColor: upColor,
       borderDownColor: downColor,
@@ -436,7 +450,7 @@ function LightweightChart({ candles, error, indicators, onChartReady }: Lightwei
 
     candleSeries.setData(
       candles.map((c) => ({
-        time: c.time as UTCTimestamp,
+        time: kst(c.time),
         open: c.open,
         high: c.high,
         low: c.low,
@@ -446,7 +460,7 @@ function LightweightChart({ candles, error, indicators, onChartReady }: Lightwei
 
     volumeSeries.setData(
       candles.map((c) => ({
-        time: c.time as UTCTimestamp,
+        time: kst(c.time),
         value: c.volume,
         color:
           c.close >= c.open
@@ -458,6 +472,13 @@ function LightweightChart({ candles, error, indicators, onChartReady }: Lightwei
               : 'rgba(66,165,245,0.5)',
       })),
     )
+
+    // Set price line color based on last candle direction
+    const last = candles[candles.length - 1]
+    const plColor = last.close >= last.open
+      ? isDark ? '#00FF00' : '#EF5350'
+      : isDark ? '#FF0000' : '#42A5F5'
+    candleSeries.applyOptions({ priceLineColor: plColor })
 
     // Only fitContent on initial data load (empty→filled) or chart recreation.
     // Streaming updates use series.update() and should preserve user's zoom.

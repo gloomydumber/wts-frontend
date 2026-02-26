@@ -9,7 +9,6 @@ import Button from '@mui/material/Button'
 import Menu from '@mui/material/Menu'
 import Checkbox from '@mui/material/Checkbox'
 import { useTheme } from '@mui/material/styles'
-import { EXCHANGE_COLORS } from '../../../types/exchange'
 import { KLINE_EXCHANGES } from './kline-adapters'
 import { INTERVALS, type IndicatorConfig, type IndicatorId } from './types'
 
@@ -87,14 +86,7 @@ function ChartToolbar({
         sx={selectSx}
       >
         {KLINE_EXCHANGES.map((ex) => (
-          <MenuItem
-            key={ex.id}
-            value={ex.id}
-            sx={{
-              ...menuItemSx,
-              color: EXCHANGE_COLORS[ex.name] ?? 'inherit',
-            }}
-          >
+          <MenuItem key={ex.id} value={ex.id} sx={menuItemSx}>
             {ex.name}
           </MenuItem>
         ))}

@@ -457,12 +457,12 @@ const bithumb: ExchangeKlineConfig = {
 // Registry
 // ---------------------------------------------------------------------------
 export const KLINE_EXCHANGES: ExchangeKlineConfig[] = [
+  upbit,
+  bithumb,
   binance,
   bybit,
   okx,
   coinbase,
-  upbit,
-  bithumb,
 ]
 
 export function getKlineAdapter(id: string): ExchangeKlineConfig | undefined {

@@ -2806,6 +2806,11 @@ The drag/resize lag has been present since `rgl-practice` and is not fully resol
 - Volume auto-hides when MACD is enabled (avoids visual clutter of two histogram areas), restores on MACD toggle-off
 - MA expanded from single MA(20) to 4 periods: MA(20) orange, MA(60) purple, MA(120) teal, MA(200) red — each independently toggleable
 - Removed `priceFormat: { type: 'volume' }` from MACD histogram (wrong format for MACD values)
+- Hollow candles (transparent fill, colored border) only in dark mode; light mode uses filled candles
+- Price line color dynamically set per candle direction (up/down matches theme colors) — fixes invisible price line caused by transparent upColor
+- Default interval changed from `1h` to `4h`
+- Timeline locale set to `en-US` (English labels); timestamps offset by +9h to display KST (lightweight-charts has no native timezone support)
+- Exchange dropdown order matched to Orderbook: Upbit → Bithumb → Binance → Bybit → OKX → Coinbase; removed per-exchange colors (plain text like Orderbook); default exchange remains Binance
 
 **Performance:** 300 candles × 8 indicators = ~2400 arithmetic ops per tick — sub-millisecond. Full `setData()` on 300-point line series <1ms.
 
