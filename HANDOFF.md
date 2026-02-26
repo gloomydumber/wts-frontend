@@ -2834,3 +2834,26 @@ The drag/resize lag has been present since `rgl-practice` and is not fully resol
 |------|--------|
 | `package.json` | `@gloomydumber/crypto-orderbook` → `^0.3.6`, `@gloomydumber/premium-table` → `^0.5.13` |
 | `package-lock.json` | Updated lockfile |
+
+### 2026-02-26: Upbit/Bithumb WebSocket Heartbeat + Chart WS Status + Misc Fixes
+
+**Heartbeat — Upbit & Bithumb (both widgets):**
+- Both exchanges have 120s idle timeout with no prior heartbeat implementation
+- Added `"PING"` text message every 60s to ChartWidget (`kline-adapters.ts`) and OrderbookWidget (`upbit.ts`, `bithumb.ts`)
+- Filtered `{"status":"UP"}` heartbeat responses in both widgets
+- crypto-orderbook bumped to v0.3.7
+
+**ChartWidget WS status indicator:**
+- `useKlineStream` now returns `WsStatus` (`connected` | `connecting` | `disconnected`)
+- 8px status circle with tooltip in toolbar (same style as Orderbook: green/orange/red)
+
+**Files changed (wts-frontend):**
+
+| File | Change |
+|------|--------|
+| `src/components/widgets/ChartWidget/kline-adapters.ts` | Added heartbeat for Upbit/Bithumb |
+| `src/components/widgets/ChartWidget/useKlineStream.ts` | Return `WsStatus`, filter `{"status":"UP"}`, set status on connect/close |
+| `src/components/widgets/ChartWidget/ChartToolbar.tsx` | Added WS status circle with tooltip |
+| `src/components/widgets/ChartWidget/index.tsx` | Pass `wsStatus` to toolbar |
+| `package.json` | `@gloomydumber/crypto-orderbook` → `^0.3.7` |
+| `package-lock.json` | Updated lockfile |

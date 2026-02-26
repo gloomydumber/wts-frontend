@@ -8,9 +8,17 @@ import CircularProgress from '@mui/material/CircularProgress'
 import Button from '@mui/material/Button'
 import Menu from '@mui/material/Menu'
 import Checkbox from '@mui/material/Checkbox'
+import Tooltip from '@mui/material/Tooltip'
 import { useTheme } from '@mui/material/styles'
 import { KLINE_EXCHANGES } from './kline-adapters'
 import { INTERVALS, type IndicatorConfig, type IndicatorId } from './types'
+import type { WsStatus } from './useKlineStream'
+
+const WS_STATUS_COLORS: Record<WsStatus, string> = {
+  connected: '#00c853',
+  connecting: '#ff9800',
+  disconnected: '#f44336',
+}
 
 interface ChartToolbarProps {
   exchangeId: string
@@ -19,6 +27,7 @@ interface ChartToolbarProps {
   interval: string
   availablePairs: string[]
   loading: boolean
+  wsStatus: WsStatus
   indicators: IndicatorConfig[]
   onExchangeChange: (id: string) => void
   onQuoteChange: (q: string) => void
@@ -44,6 +53,7 @@ function ChartToolbar({
   interval,
   availablePairs,
   loading,
+  wsStatus,
   indicators,
   onExchangeChange,
   onQuoteChange,
@@ -203,10 +213,19 @@ function ChartToolbar({
         ))}
       </Menu>
 
-      {/* Loading indicator */}
-      {loading && (
-        <CircularProgress size={16} sx={{ ml: 'auto', flexShrink: 0 }} />
-      )}
+      {/* Loading spinner + WS status */}
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        {loading && <CircularProgress size={16} />}
+        <Tooltip title={wsStatus} placement="bottom">
+          <div style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            backgroundColor: WS_STATUS_COLORS[wsStatus],
+            flexShrink: 0,
+          }} />
+        </Tooltip>
+      </div>
     </Box>
   )
 }

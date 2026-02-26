@@ -153,7 +153,7 @@ function ChartWidget() {
     })
   }, [])
 
-  useKlineStream({
+  const wsStatus = useKlineStream({
     adapter,
     symbol: wsSymbol,
     interval,
@@ -249,6 +249,7 @@ function ChartWidget() {
               interval={interval}
               availablePairs={availablePairs}
               loading={loading}
+              wsStatus={wsStatus}
               indicators={indicators}
               onExchangeChange={handleExchangeChange}
               onQuoteChange={handleQuoteChange}

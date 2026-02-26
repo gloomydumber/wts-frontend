@@ -352,6 +352,7 @@ const upbit: ExchangeKlineConfig = {
         timestamp: msg.tms ?? Date.now(),
       }
     },
+    heartbeat: { message: 'PING', interval: 60_000 },
   },
   async fetchKlines(symbol, interval, limit, signal) {
     const path = this.intervalMap[interval] ?? 'minutes/60'
@@ -423,6 +424,7 @@ const bithumb: ExchangeKlineConfig = {
         timestamp: new Date(t.contDtm).getTime(),
       }
     },
+    heartbeat: { message: 'PING', interval: 60_000 },
   },
   async fetchKlines(symbol, interval, limit, signal) {
     const mapped = this.intervalMap[interval] ?? '1h'

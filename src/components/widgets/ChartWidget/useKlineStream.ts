@@ -1,9 +1,11 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Candle, ExchangeKlineConfig, KlineStreamConfig, TradeStreamConfig } from './types'
 import { INTERVAL_MS } from './types'
 
 const MAX_RECONNECT = 10
 const RECONNECT_DELAY = 3_000
+
+export type WsStatus = 'connected' | 'connecting' | 'disconnected'
 
 interface UseKlineStreamParams {
   adapter: ExchangeKlineConfig | undefined
@@ -31,7 +33,8 @@ export function useKlineStream({
   interval,
   paused,
   onCandle,
-}: UseKlineStreamParams) {
+}: UseKlineStreamParams): WsStatus {
+  const [status, setStatus] = useState<WsStatus>('disconnected')
   const pausedRef = useRef(paused)
   pausedRef.current = paused
 
@@ -40,7 +43,10 @@ export function useKlineStream({
 
   useEffect(() => {
     const stream = adapter?.stream
-    if (!stream || !symbol || !interval || !adapter) return
+    if (!stream || !symbol || !interval || !adapter) {
+      setStatus('disconnected')
+      return
+    }
 
     // Bind to local const so TS narrows inside closures
     const cfg = stream
@@ -104,6 +110,7 @@ export function useKlineStream({
 
     function connect() {
       if (disposed) return
+      setStatus('connecting')
 
       const url =
         cfg.type === 'kline'
@@ -114,6 +121,7 @@ export function useKlineStream({
 
       ws.onopen = () => {
         reconnectCount = 0
+        setStatus('connected')
 
         // Send subscribe message
         if (cfg.type === 'kline' && cfg.getSubscribeMsg) {
@@ -148,7 +156,8 @@ export function useKlineStream({
 
         // Handle pong/heartbeat responses (ignore)
         if (typeof event.data === 'string') {
-          if (event.data === 'pong' || event.data === '{"op":"pong"}') return
+          if (event.data === 'pong' || event.data === '{"op":"pong"}'
+            || event.data === '{"status":"UP"}') return
           try {
             dispatch(JSON.parse(event.data))
           } catch {
@@ -161,7 +170,10 @@ export function useKlineStream({
         cleanup(false)
         if (!disposed && reconnectCount < MAX_RECONNECT) {
           reconnectCount++
+          setStatus('connecting')
           reconnectTimer = setTimeout(connect, RECONNECT_DELAY)
+        } else if (!disposed) {
+          setStatus('disconnected')
         }
       }
 
@@ -196,6 +208,9 @@ export function useKlineStream({
     return () => {
       disposed = true
       cleanup(true)
+      setStatus('disconnected')
     }
   }, [adapter, symbol, interval])
+
+  return status
 }
