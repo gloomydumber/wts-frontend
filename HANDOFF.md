@@ -2855,5 +2855,11 @@ The drag/resize lag has been present since `rgl-practice` and is not fully resol
 | `src/components/widgets/ChartWidget/useKlineStream.ts` | Return `WsStatus`, filter `{"status":"UP"}`, set status on connect/close |
 | `src/components/widgets/ChartWidget/ChartToolbar.tsx` | Added WS status circle with tooltip |
 | `src/components/widgets/ChartWidget/index.tsx` | Pass `wsStatus` to toolbar |
-| `package.json` | `@gloomydumber/crypto-orderbook` → `^0.3.7` |
+| `package.json` | `@gloomydumber/crypto-orderbook` → `^0.3.7`, `@gloomydumber/premium-table` → `^0.5.14` |
 | `package-lock.json` | Updated lockfile |
+
+**premium-table heartbeat (separate repo):**
+- Added `heartbeatConfig: { message: 'PING', interval: 60_000 }` to Upbit and Bithumb adapters in premium-table-refactored
+- `{"status":"UP"}` response already silently dropped by `parseUpbitJson` (no `cd`/`tp` fields)
+- Bybit and OKX already had heartbeat configured (`{"op":"ping"}` / `'ping'`)
+- premium-table bumped to v0.5.14
