@@ -75,6 +75,36 @@ function buildLineData(
   return data
 }
 
+function fmtVol(v: number): string {
+  if (v >= 1e9) return (v / 1e9).toFixed(2) + 'B'
+  if (v >= 1e6) return (v / 1e6).toFixed(2) + 'M'
+  if (v >= 1e3) return (v / 1e3).toFixed(2) + 'K'
+  return v.toFixed(2)
+}
+
+function setLegend(
+  el: HTMLDivElement,
+  o: number, h: number, l: number, c: number, v: number,
+  isDark: boolean,
+) {
+  const change = o > 0 ? (c - o) / o * 100 : 0
+  const isUp = c >= o
+  const dirColor = isUp
+    ? (isDark ? '#00FF00' : '#EF5350')
+    : (isDark ? '#FF0000' : '#42A5F5')
+  const sign = change >= 0 ? '+' : ''
+  const oColor = isDark ? '#FFF' : '#000'
+  // Values are all numbers — no user input, safe to use innerHTML
+  el.style.fontWeight = 'bold'
+  el.innerHTML =
+    `<span style="color:${oColor}">O ${o}</span>  ` +
+    `<span style="color:${isDark ? '#00FF00' : '#EF5350'}">H ${h}</span>  ` +
+    `<span style="color:${isDark ? '#FF0000' : '#42A5F5'}">L ${l}</span>  ` +
+    `<span style="color:${dirColor}">C ${c}</span>  ` +
+    `<span style="color:${isDark ? '#87CEEB' : '#4682B4'}">V ${fmtVol(v)}</span>  ` +
+    `<span style="color:${dirColor}">${sign}${change.toFixed(2)}%</span>`
+}
+
 function getIndicator(indicators: IndicatorConfig[], id: IndicatorId) {
   return indicators.find((ind) => ind.id === id)
 }
@@ -150,6 +180,11 @@ function LightweightChart({ candles, error, indicators, onChartReady }: Lightwei
   const indicatorSeriesRef = useRef<IndicatorSeries>({})
   const paneRefsRef = useRef<PaneRefs>({})
 
+  const legendRef = useRef<HTMLDivElement | null>(null)
+  const candlesRef = useRef<Candle[]>(candles)
+  candlesRef.current = candles
+  const isHoveringRef = useRef(false)
+
   const containerRef = useCallback((node: HTMLDivElement | null) => {
     chartContainerRef.current = node
   }, [])
@@ -222,6 +257,27 @@ function LightweightChart({ candles, error, indicators, onChartReady }: Lightwei
     indicatorSeriesRef.current = {}
     paneRefsRef.current = {}
 
+    chart.subscribeCrosshairMove((param) => {
+      const legend = legendRef.current
+      if (!legend) return
+
+      const candleData = param.seriesData?.get(candleSeries)
+      const volumeData = param.seriesData?.get(volumeSeries)
+
+      if (candleData && 'open' in candleData) {
+        isHoveringRef.current = true
+        const cd = candleData as { open: number; high: number; low: number; close: number }
+        const vd = volumeData as { value: number } | undefined
+        setLegend(legend, cd.open, cd.high, cd.low, cd.close, vd?.value ?? 0, isDarkRef.current)
+      } else {
+        isHoveringRef.current = false
+        const latest = candlesRef.current[candlesRef.current.length - 1]
+        if (latest) {
+          setLegend(legend, latest.open, latest.high, latest.low, latest.close, latest.volume, isDarkRef.current)
+        }
+      }
+    })
+
     onChartReady?.({
       updateCandle: (c: Candle) => {
         candleSeries.update({
@@ -236,6 +292,9 @@ function LightweightChart({ candles, error, indicators, onChartReady }: Lightwei
           ? dark ? '#00FF00' : '#EF5350'
           : dark ? '#FF0000' : '#42A5F5'
         candleSeries.applyOptions({ priceLineColor: plColor })
+        if (!isHoveringRef.current && legendRef.current) {
+          setLegend(legendRef.current, c.open, c.high, c.low, c.close, c.volume, dark)
+        }
       },
       updateVolume: (c: Candle) => {
         const dark = isDarkRef.current
@@ -473,6 +532,12 @@ function LightweightChart({ candles, error, indicators, onChartReady }: Lightwei
       })),
     )
 
+    // Update legend with latest candle
+    if (legendRef.current && candles.length > 0) {
+      const latest = candles[candles.length - 1]
+      setLegend(legendRef.current, latest.open, latest.high, latest.low, latest.close, latest.volume, isDark)
+    }
+
     // Set price line color based on last candle direction
     const last = candles[candles.length - 1]
     const plColor = last.close >= last.open
@@ -496,6 +561,19 @@ function LightweightChart({ candles, error, indicators, onChartReady }: Lightwei
       ref={containerRef}
       style={{ width: '100%', height: '100%', position: 'relative' }}
     >
+      <div
+        ref={legendRef}
+        style={{
+          position: 'absolute',
+          top: 4,
+          left: 4,
+          zIndex: 2,
+          fontSize: '11px',
+          fontFamily: 'monospace',
+          pointerEvents: 'none',
+          whiteSpace: 'nowrap',
+        }}
+      />
       {overlayMessage && (
         <Box
           style={{

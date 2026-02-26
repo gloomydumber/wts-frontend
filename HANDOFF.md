@@ -2863,3 +2863,29 @@ The drag/resize lag has been present since `rgl-practice` and is not fully resol
 - `{"status":"UP"}` response already silently dropped by `parseUpbitJson` (no `cd`/`tp` fields)
 - Bybit and OKX already had heartbeat configured (`{"op":"ping"}` / `'ping'`)
 - premium-table bumped to v0.5.14
+
+### 2026-02-26: Chart OHLCV Legend Overlay (Crosshair Hover)
+
+**Goal:** Add a TradingView-style OHLCV + change% legend overlay at the top-left of the Lightweight Charts tab, updating on crosshair hover.
+
+**Implementation:**
+- `subscribeCrosshairMove()` shows candle data on hover; falls back to latest candle when crosshair leaves
+- Direct DOM manipulation (`innerHTML`) — no React re-renders on every mouse move
+- Live streaming updates the legend in real-time when user is not hovering
+- Legend initialized with latest candle on data load
+
+**Color scheme (semantic):**
+| Field | Dark | Light |
+|-------|------|-------|
+| O (Open) | `#FFF` white | `#000` black |
+| H (High) | `#00FF00` lime | `#EF5350` red (candle up color) |
+| L (Low) | `#FF0000` red | `#42A5F5` blue (candle down color) |
+| C (Close) | dynamic (candle direction) | dynamic (candle direction) |
+| V (Volume) | `#87CEEB` skyblue | `#4682B4` steel blue |
+| % (Change) | dynamic (candle direction) | dynamic (candle direction) |
+
+**Files changed:**
+
+| File | Change |
+|------|--------|
+| `src/components/widgets/ChartWidget/LightweightChart.tsx` | Added `fmtVol`, `setLegend` helpers; `legendRef`/`candlesRef`/`isHoveringRef` refs; crosshair subscription; legend div in JSX |
