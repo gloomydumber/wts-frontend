@@ -3,6 +3,7 @@ import { WidthProvider, Responsive, type Layout, type Layouts } from 'react-grid
 import { useAtom, useSetAtom } from 'jotai'
 import { setUpdatesPaused as setPremiumTablePaused } from '@gloomydumber/premium-table'
 import { setUpdatesPaused as setOrderbookPaused } from '@gloomydumber/crypto-orderbook'
+import { setChartPaused } from '../components/widgets/ChartWidget'
 
 import { layoutsAtom, currentBreakpointAtom, widgetVisibilityAtom } from '../store/atoms'
 import {
@@ -81,11 +82,13 @@ export default function GridLayout() {
   const handleInteractionStart = useCallback(() => {
     setPremiumTablePaused(true)
     setOrderbookPaused(true)
+    setChartPaused(true)
     setIsInteracting(true)
   }, [])
   const handleInteractionStop = useCallback(() => {
     setPremiumTablePaused(false)
     setOrderbookPaused(false)
+    setChartPaused(false)
     setIsInteracting(false)
   }, [])
 
