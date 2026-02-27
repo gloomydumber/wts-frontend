@@ -133,7 +133,7 @@ function ChartToolbar({
           listbox: { style: { maxHeight: 300, fontSize: '0.75rem' } },
           popper: { style: { minWidth: 100 } },
         }}
-        sx={{ width: 100 }}
+        sx={{ width: 120 }}
         renderInput={(params) => (
           <TextField
             {...params}
