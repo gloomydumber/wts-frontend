@@ -5,7 +5,20 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:www.npmjs.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:developers.binance.com)"
+      "WebFetch(domain:developers.binance.com)",
+      "WebFetch(domain:apidocs.bithumb.com)",
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:global-docs.upbit.com)",
+      "WebFetch(domain:bybit-exchange.github.io)",
+      "WebFetch(domain:docs.cdp.coinbase.com)",
+      "WebFetch(domain:www.okx.com)",
+      "WebFetch(domain:docs.upbit.com)",
+      "WebFetch(domain:api.upbit.com)",
+      "WebFetch(domain:api.bithumb.com)",
+      "WebFetch(domain:www.tradingview.com)",
+      "WebFetch(domain:www.bitmex.com)",
+      "WebFetch(domain:virtuoso.dev)",
+      "WebFetch(domain:tradingview.github.io)"
     ]
   }
 }
