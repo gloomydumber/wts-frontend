@@ -44,7 +44,7 @@ function ChartWidget() {
 
   // Fetch available pairs when exchange/quote changes
   useEffect(() => {
-    if (tab !== 1) return
+    if (tab !== 0) return
     const adapter = getKlineAdapter(exchangeId)
     if (!adapter) return
 
@@ -76,7 +76,7 @@ function ChartWidget() {
 
   // Fetch klines when params change
   useEffect(() => {
-    if (tab !== 1) return
+    if (tab !== 0) return
     const adapter = getKlineAdapter(exchangeId)
     if (!adapter || !base) return
 
@@ -113,7 +113,7 @@ function ChartWidget() {
   }, [tab, exchangeId, quote, base, interval])
 
   // WebSocket live streaming
-  const adapter = tab === 1 ? getKlineAdapter(exchangeId) : undefined
+  const adapter = tab === 0 ? getKlineAdapter(exchangeId) : undefined
   const wsSymbol = adapter ? adapter.buildSymbol(base, quote) : ''
 
   const onCandle = useCallback((candle: Candle, isClosed: boolean) => {
@@ -217,7 +217,7 @@ function ChartWidget() {
         sx={{ minHeight: 28, flexShrink: 0 }}
       >
         <Tab
-          label="TradingView"
+          label="Custom Chart"
           sx={{
             minHeight: 28,
             py: 0,
@@ -227,7 +227,7 @@ function ChartWidget() {
           }}
         />
         <Tab
-          label="Custom Chart"
+          label="TradingView"
           sx={{
             minHeight: 28,
             py: 0,
@@ -239,8 +239,7 @@ function ChartWidget() {
       </Tabs>
 
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        {tab === 0 && <TradingViewChart />}
-        {tab === 1 && (
+        {tab === 0 && (
           <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
             <ChartToolbar
               exchangeId={exchangeId}
@@ -263,6 +262,7 @@ function ChartWidget() {
             </div>
           </div>
         )}
+        {tab === 1 && <TradingViewChart />}
       </div>
     </div>
   )
