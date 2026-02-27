@@ -4,9 +4,9 @@ import type { WidgetConfig, WidgetLayoutItem, Layouts } from '../types/layout'
 export const WIDGET_REGISTRY: WidgetConfig[] = [
   { id: 'Console', label: 'Console', permanent: true, defaultVisible: true },
   { id: 'Cex', label: 'CEX', defaultVisible: true },
-  { id: 'Orderbook', label: 'Orderbook', defaultVisible: true },
-  { id: 'PremiumTable', label: 'Premium Table', defaultVisible: true },
-  { id: 'Chart', label: 'Chart', defaultVisible: true },
+  { id: 'Orderbook', label: 'Orderbook', defaultVisible: true, refreshable: true },
+  { id: 'PremiumTable', label: 'Premium Table', defaultVisible: true, refreshable: true },
+  { id: 'Chart', label: 'Chart', defaultVisible: true, refreshable: true },
   { id: 'ExchangeCalc', label: 'Exchange Calculator', defaultVisible: true },
   { id: 'Dex', label: 'DEX', defaultVisible: true },
   { id: 'Memo', label: 'Memo', defaultVisible: false },

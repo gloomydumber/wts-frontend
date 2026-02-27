@@ -11,7 +11,7 @@ import {
   COLS,
   ROW_HEIGHT,
   getCurrentBreakpoint,
-  WIDGET_REGISTRY,
+  getWidgetConfig,
 } from './defaults'
 import ResizeHandle from '../styles/ResizeHandle'
 import { widgetComponents } from '../components/widgets'
@@ -34,6 +34,11 @@ export default function GridLayout() {
 
   const [windowWidth, setWindowWidth] = useState(window.innerWidth)
   const [isInteracting, setIsInteracting] = useState(false)
+  const [refreshKeys, setRefreshKeys] = useState<Record<string, number>>({})
+
+  const refreshWidget = useCallback((id: string) => {
+    setRefreshKeys((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }))
+  }, [])
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth)
@@ -111,10 +116,15 @@ export default function GridLayout() {
       resizeHandle={<ResizeHandle />}
     >
       {currentLayout.map((item: Layout) => {
-        const config = WIDGET_REGISTRY.find((w) => w.id === item.i)
+        const config = getWidgetConfig(item.i)
 
         return (
           <div key={item.i} className="grid-item">
+            {config?.refreshable && (
+              <div className="refresh-button" onClick={() => refreshWidget(item.i)}>
+                ↻
+              </div>
+            )}
             {!config?.permanent && (
               <div className="close-button" onClick={() => removeItem(item.i)}>
                 &times;
@@ -122,7 +132,7 @@ export default function GridLayout() {
             )}
             <div className="drag-handle">{config?.label ?? item.i}</div>
             <div className="content">
-              <WidgetContent id={item.i} />
+              <WidgetContent key={`${item.i}-${refreshKeys[item.i] || 0}`} id={item.i} />
             </div>
           </div>
         )

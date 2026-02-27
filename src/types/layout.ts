@@ -11,6 +11,7 @@ export interface WidgetConfig {
   label: string
   permanent?: boolean // Cannot be closed (e.g., ConsoleWidget)
   defaultVisible?: boolean
+  refreshable?: boolean // Show refresh button (key-based remount)
 }
 
 // Re-export for convenience
