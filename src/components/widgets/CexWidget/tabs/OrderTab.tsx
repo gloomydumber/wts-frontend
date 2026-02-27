@@ -43,6 +43,8 @@ export interface OrderState {
    *    to reduce polling need — only poll for order placement, not status checks
    */
   pollInterval: string
+  continuous: boolean
+  sellAllAvailable: boolean
 }
 
 export const DEFAULT_ORDER_STATE: OrderState = {
@@ -53,6 +55,8 @@ export const DEFAULT_ORDER_STATE: OrderState = {
   sellOnly: false,
   loopActive: false,
   pollInterval: '500',
+  continuous: false,
+  sellAllAvailable: false,
 }
 
 /** Strip non-numeric chars (except dot) — allows pasting "100,000.50" */
@@ -199,22 +203,52 @@ export default function OrderTab({ exchange, pair, state, onChange }: OrderTabPr
             label={<Typography sx={{ fontSize: '0.6rem', color: 'text.primary' }}>Sell-Only (polling)</Typography>}
             sx={{ m: 0 }}
           />
-          {/* Polling interval — shown when Sell-Only is checked */}
+          {/* Polling interval + continuous options — shown when Sell-Only is checked */}
           {sellOnly && (
-            <TextField
-              label="Poll Interval (ms)"
-              value={state.pollInterval}
-              onChange={(e) => onChange({ pollInterval: sanitizeNumber(e.target.value) })}
-              size="small"
-              fullWidth
-              disabled={loopActive}
-              sx={{
-                mt: 1.5,
-                '& .MuiInputBase-input': { fontSize: '0.75rem', py: '6px' },
-                '& .MuiInputLabel-root': { fontSize: '0.65rem' },
-              }}
-              slotProps={{ htmlInput: { inputMode: 'numeric' } }}
-            />
+            <>
+              <TextField
+                label="Poll Interval (ms)"
+                value={state.pollInterval}
+                onChange={(e) => onChange({ pollInterval: sanitizeNumber(e.target.value) })}
+                size="small"
+                fullWidth
+                disabled={loopActive}
+                sx={{
+                  mt: 1.5,
+                  '& .MuiInputBase-input': { fontSize: '0.75rem', py: '6px' },
+                  '& .MuiInputLabel-root': { fontSize: '0.65rem' },
+                }}
+                slotProps={{ htmlInput: { inputMode: 'numeric' } }}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={state.continuous}
+                    onChange={(_, checked) => onChange({ continuous: checked, ...(!checked ? { sellAllAvailable: false } : {}) })}
+                    size="small"
+                    disabled={loopActive}
+                    sx={{ p: 0.3, color: 'text.secondary', '&.Mui-checked': { color: 'primary.main' } }}
+                  />
+                }
+                label={<Typography sx={{ fontSize: '0.6rem', color: 'text.primary' }}>Continuous (batch deposits)</Typography>}
+                sx={{ m: 0, mt: 0.5 }}
+              />
+              {state.continuous && (
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={state.sellAllAvailable}
+                      onChange={(_, checked) => onChange({ sellAllAvailable: checked })}
+                      size="small"
+                      disabled={loopActive}
+                      sx={{ p: 0.3, ml: 2, color: 'text.secondary', '&.Mui-checked': { color: 'primary.main' } }}
+                    />
+                  }
+                  label={<Typography sx={{ fontSize: '0.6rem', color: 'text.primary' }}>Sell all available</Typography>}
+                  sx={{ m: 0 }}
+                />
+              )}
+            </>
           )}
         </Box>
       )}
@@ -224,9 +258,11 @@ export default function OrderTab({ exchange, pair, state, onChange }: OrderTabPr
           variant="outlined"
           fullWidth
           onClick={() => {
+            const wasContinuous = state.continuous
             onChange({ loopActive: false })
             sellOnlyRef.current = false
-            log({ level: 'WARN', category: 'ORDER', source: exchange.id, message: `[${exchange.label}] Sell-Only loop cancelled — ${pair}` })
+            // Phase 2: include fill count and total filled qty in cancel log
+            log({ level: 'WARN', category: 'ORDER', source: exchange.id, message: `[${exchange.label}] Sell-Only${wasContinuous ? ' continuous' : ''} loop cancelled — ${pair}` })
           }}
           sx={{
             mt: 1, fontSize: '0.7rem',
@@ -245,12 +281,32 @@ export default function OrderTab({ exchange, pair, state, onChange }: OrderTabPr
             if (side === 'sell' && sellOnly) {
               onChange({ loopActive: true })
               sellOnlyRef.current = true
+              const modeTag = state.continuous
+                ? state.sellAllAvailable ? '(continuous, sellAll)' : '(continuous)'
+                : ''
+              const qtyLabel = state.continuous && state.sellAllAvailable ? 'allAvailable' : quantity
               log({
                 level: 'INFO', category: 'ORDER', source: exchange.id,
-                message: `[${exchange.label}] Sell-Only loop started — ${pair} qty=${quantity} @${orderType === 'limit' ? price : 'marketPrice'} interval=${state.pollInterval}ms`,
-                data: { exchange: exchange.label, pair, orderType, price, quantity, pollInterval: state.pollInterval },
+                message: `[${exchange.label}] Sell-Only loop started${modeTag ? ` ${modeTag}` : ''} — ${pair} qty=${qtyLabel} @${orderType === 'limit' ? price : 'marketPrice'} interval=${state.pollInterval}ms`,
+                data: { exchange: exchange.label, pair, orderType, price, quantity, pollInterval: state.pollInterval, continuous: state.continuous, sellAllAvailable: state.sellAllAvailable },
               })
-              // Phase 2: start polling loop here
+              /**
+               * Phase 2 — Sell-Only polling loop behavior:
+               *
+               * Normal (continuous=false):
+               *   Place sell order → poll order status → on fill, stop loop.
+               *
+               * Continuous (continuous=true, sellAllAvailable=false):
+               *   Place sell order with fixed qty → poll status → on fill, log fill count,
+               *   place next order with same qty → repeat until user cancels.
+               *
+               * Continuous + Sell All (continuous=true, sellAllAvailable=true):
+               *   Each polling round: fetch available balance from exchange API →
+               *   if balance > 0, place sell for full available amount → on fill, log →
+               *   repeat until user cancels.
+               *
+               * Track fillCount and totalFilledQty for the cancel log summary.
+               */
             } else {
               log({
                 level: 'INFO', category: 'ORDER', source: exchange.id,

@@ -23,6 +23,12 @@ export const widgetVisibilityAtom = atomWithStorage<Record<string, boolean>>(
 // Theme — persisted to localStorage
 export const isDarkAtom = atomWithStorage<boolean>('isDark', true)
 
+// Chart config — persisted to localStorage (survives refresh like OrderbookWidget)
+export const chartExchangeAtom = atomWithStorage<string>('chartExchange', 'binance')
+export const chartQuoteAtom = atomWithStorage<string>('chartQuote', 'USDT')
+export const chartBaseAtom = atomWithStorage<string>('chartBase', 'BTC')
+export const chartIntervalAtom = atomWithStorage<string>('chartInterval', '4h')
+
 // DEX wallets — multi-wallet support, persisted to localStorage
 // Replaces old dexWalletAtom + dexMnemonicAtom
 const dexWalletsDefault: DexWalletsState = { wallets: [], activeWalletId: '' }

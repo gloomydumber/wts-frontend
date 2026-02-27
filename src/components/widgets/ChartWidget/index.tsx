@@ -1,15 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useAtom } from 'jotai'
 import Tabs from '@mui/material/Tabs'
 import Tab from '@mui/material/Tab'
 import TradingViewChart from './TradingViewChart'
 import LightweightChart, { type ChartHandle } from './LightweightChart'
 import ChartToolbar from './ChartToolbar'
-import { KLINE_EXCHANGES, getKlineAdapter } from './kline-adapters'
+import { getKlineAdapter } from './kline-adapters'
 import { useKlineStream } from './useKlineStream'
 import type { Candle, IndicatorConfig, IndicatorId } from './types'
 import { DEFAULT_INDICATORS } from './types'
-
-const DEFAULT_EXCHANGE = KLINE_EXCHANGES.find((e) => e.id === 'binance')!
+import { chartExchangeAtom, chartQuoteAtom, chartBaseAtom, chartIntervalAtom } from '../../../store/atoms'
 const KLINE_LIMIT = 300
 
 // Module-level pause control (same pattern as npm widget packages)
@@ -20,10 +20,10 @@ export function setChartPaused(paused: boolean) {
 
 function ChartWidget() {
   const [tab, setTab] = useState(0)
-  const [exchangeId, setExchangeId] = useState(DEFAULT_EXCHANGE.id)
-  const [quote, setQuote] = useState(DEFAULT_EXCHANGE.quoteCurrencies[0])
-  const [base, setBase] = useState('BTC')
-  const [interval, setInterval] = useState('4h')
+  const [exchangeId, setExchangeId] = useAtom(chartExchangeAtom)
+  const [quote, setQuote] = useAtom(chartQuoteAtom)
+  const [base, setBase] = useAtom(chartBaseAtom)
+  const [interval, setInterval] = useAtom(chartIntervalAtom)
   const [candles, setCandles] = useState<Candle[]>([])
   const [availablePairs, setAvailablePairs] = useState<string[]>([])
   const [loading, setLoading] = useState(false)

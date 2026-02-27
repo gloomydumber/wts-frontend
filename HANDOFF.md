@@ -2939,3 +2939,45 @@ The drag/resize lag has been present since `rgl-practice` and is not fully resol
 | `src/components/widgets/CexWidget/tabs/WithdrawTab.tsx` | Exact network match, disabled options, console log on paste, Phase 2 comments |
 | `src/components/widgets/CexWidget/tabs/OrderTab.tsx` | Added price info to sell-only loop log |
 | `package.json` | `@gloomydumber/crypto-orderbook` → `^0.3.10` |
+
+### 2026-02-27: Divided Withdrawal + Continuous Sell Mode
+
+**Arbitrage workflow:** Buy cheap on Exchange A → withdraw to Exchange B → sell. Two enhancements:
+
+**CEX Withdraw — Divided Withdrawal mode:**
+- New `WithdrawState` fields: `divided`, `divideMode` ('count'|'fiat'), `divideCount`, `divideFiatPerTx`
+- Collapsible UI below Amount field: checkbox toggle, Count/Fiat mode selector, input, preview text
+- Count mode: splits total by N, floors per-tx amount to asset decimals, remainder added to 1st tx
+- Fiat mode: currency auto-derived from destination exchange (Upbit/Bithumb → KRW, others → USDT)
+  - Disabled when destination is 'custom' (no exchange to price against, forced to Count mode)
+  - Toggle button label shows the actual currency (KRW/USDT), not generic "Fiat"
+  - Mock: KRW = mockPriceIndex USDT price × 1400, USDT = mockPriceIndex directly
+- Button text shows `Withdraw ×N (Mock)`, console logs each individual tx with `×i/N` prefix
+- Uses integer-scaled arithmetic to avoid floating-point errors in division/remainder
+
+> **Needs more consideration for Phase 2:**
+> The fiat-based division pricing model is simplistic. Open questions:
+> - Price source: should it always be the destination exchange's ticker, or allow user to pick?
+> - KRW detection: currently hardcoded to Upbit/Bithumb — should come from exchange metadata (quote currency)
+> - Mock KRW rate (1400) is static — Phase 2 needs live USDTKRW rate (from ExchangeCalcWidget or API)
+> - ASSET_DECIMALS is hardcoded — Phase 2 should pull from exchange's asset precision metadata
+> - Fiat default value (200M) makes sense for KRW but not USDT — consider per-currency defaults or resetting on currency change
+> - The entire fiat mode assumes the sell price ≈ current market price, which may not hold for large orders with slippage
+> - Divided withdraw requests need a configurable interval between each API call to avoid rate limits (currently all N logs fire synchronously)
+
+**CEX Order — Continuous Sell mode:**
+- New `OrderState` fields: `continuous`, `sellAllAvailable`
+- Continuous checkbox visible when Sell-Only is checked; Sell All Available visible when Continuous is checked
+- All new controls disabled during active loop (same as existing sell-only controls)
+- Start log includes mode tag: `(continuous)` or `(continuous, sellAll)`, qty shows `allAvailable` when sellAll
+- Cancel log includes `continuous` label when applicable
+- Phase 2 comments document polling loop behavior for normal/continuous/sellAll modes
+
+**Files changed:**
+
+| File | Change |
+|------|--------|
+| `src/components/widgets/CexWidget/tabs/WithdrawTab.tsx` | Divided withdrawal: state, UI (toggle + mode + input + preview), button text, logging |
+| `src/components/widgets/CexWidget/tabs/OrderTab.tsx` | Continuous mode: state, UI (checkboxes), logging, Phase 2 comments |
+| `src/store/atoms.ts` | Added `chartExchangeAtom`, `chartQuoteAtom`, `chartBaseAtom`, `chartIntervalAtom` (atomWithStorage) |
+| `src/components/widgets/ChartWidget/index.tsx` | Replaced useState with useAtom for exchange/quote/base/interval — persists across refresh |

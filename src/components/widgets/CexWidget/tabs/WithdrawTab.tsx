@@ -1,8 +1,8 @@
-import { Box, TextField, Autocomplete, Button, Typography } from '@mui/material'
+import { Box, TextField, Autocomplete, Button, Typography, Checkbox, FormControlLabel, ToggleButtonGroup, ToggleButton } from '@mui/material'
 import type { ExchangeConfig } from '../types'
 import { EXCHANGES } from '../types'
 import type { ExchangeMetadata } from '../preload'
-import { mockDepositAddresses } from '../mockData'
+import { mockDepositAddresses, mockPriceIndex } from '../mockData'
 import { log } from '../../../../services/logger'
 
 export interface WithdrawState {
@@ -12,6 +12,10 @@ export interface WithdrawState {
   address: string
   memo: string
   amount: string
+  divided: boolean
+  divideMode: 'count' | 'fiat'
+  divideCount: string
+  divideFiatPerTx: string
 }
 
 export const DEFAULT_WITHDRAW_STATE: WithdrawState = {
@@ -21,6 +25,10 @@ export const DEFAULT_WITHDRAW_STATE: WithdrawState = {
   address: '',
   memo: '',
   amount: '',
+  divided: false,
+  divideMode: 'count',
+  divideCount: '7',
+  divideFiatPerTx: '200000000',
 }
 
 interface WithdrawTabProps {
@@ -123,6 +131,55 @@ export default function WithdrawTab({ exchange, metadata, state, onChange }: Wit
     return ex.label
   }
 
+  // --- Divided withdrawal calculation ---
+  // Korean exchanges trade in KRW; international exchanges in USDT
+  // Phase 2: derive from destination exchange's quote currency via API metadata
+  const KRW_EXCHANGES = new Set(['Upbit', 'Bithumb'])
+  // Fiat mode requires a known destination exchange for price reference
+  const fiatAvailable = destination !== 'custom'
+  const fiatCurrency = KRW_EXCHANGES.has(destination) ? 'KRW' : 'USDT'
+  // Auto-reset to count mode if destination switches to custom while fiat is selected
+  const effectiveDivideMode = !fiatAvailable && state.divideMode === 'fiat' ? 'count' : state.divideMode
+
+  const ASSET_DECIMALS: Record<string, number> = {
+    BTC: 8, ETH: 8, XRP: 6, SOL: 9, USDT: 6, BNB: 8, OKB: 8, KRW: 0,
+  }
+  const decimals = ASSET_DECIMALS[asset] ?? 8
+  const totalAmt = parseFloat(amount || '0')
+  let divCount = 1
+  let divEach = 0
+  let divRemainder = 0
+
+  if (state.divided && totalAmt > 0) {
+    if (effectiveDivideMode === 'count') {
+      divCount = Math.max(1, parseInt(state.divideCount || '1', 10))
+    } else {
+      // Fiat mode: per-tx amount in destination exchange's currency
+      // Phase 2: fetch price from the destination exchange's ticker endpoint
+      const MOCK_KRW_PER_USDT = 1400
+      const pairKey = `${asset}USDT`
+      const usdtPrice = mockPriceIndex[pairKey] || 1
+      const price = fiatCurrency === 'KRW' ? usdtPrice * MOCK_KRW_PER_USDT : usdtPrice
+      const fiatPerTx = parseFloat(state.divideFiatPerTx || '0')
+      if (fiatPerTx > 0 && price > 0) {
+        divCount = Math.max(1, Math.ceil(totalAmt / (fiatPerTx / price)))
+      }
+    }
+    const factor = Math.pow(10, decimals)
+    const totalScaled = Math.round(totalAmt * factor)
+    const eachScaled = Math.floor(totalScaled / divCount)
+    divEach = eachScaled / factor
+    divRemainder = (totalScaled - eachScaled * divCount) / factor
+  }
+
+  const formatNum = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 8 })
+  const dividedPreview = state.divided && totalAmt > 0
+    ? `${divCount}× ${formatNum(divEach)}${divRemainder > 0 ? ` (remainder +${formatNum(divRemainder)} on 1st)` : ''}`
+    : ''
+
+  /** Strip non-numeric chars (except dot) */
+  const sanitizeNumber = (raw: string) => raw.replace(/[^0-9.]/g, '')
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1 }}>
       <Autocomplete
@@ -183,6 +240,52 @@ export default function WithdrawTab({ exchange, metadata, state, onChange }: Wit
 
       <TextField label="Amount" value={amount} onChange={(e) => onChange({ amount: e.target.value })} size="small" fullWidth sx={inputSx} />
 
+      {/* Divided Withdrawal */}
+      <Box sx={{ mt: 0.5 }}>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={state.divided}
+              onChange={(_, checked) => onChange({ divided: checked })}
+              size="small"
+              sx={{ p: 0.3, color: 'text.secondary', '&.Mui-checked': { color: 'primary.main' } }}
+            />
+          }
+          label={<Typography sx={{ fontSize: '0.6rem', color: 'text.primary' }}>Divided Withdraw</Typography>}
+          sx={{ m: 0 }}
+        />
+        {state.divided && (
+          <Box sx={{ pl: 1, mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <ToggleButtonGroup
+                value={effectiveDivideMode}
+                exclusive
+                onChange={(_, v) => v && onChange({ divideMode: v })}
+                size="small"
+              >
+                <ToggleButton value="count" sx={{ fontSize: '0.6rem', py: 0.2, px: 1 }}>Count</ToggleButton>
+                <ToggleButton value="fiat" disabled={!fiatAvailable} sx={{ fontSize: '0.6rem', py: 0.2, px: 1 }}>{fiatAvailable ? fiatCurrency : 'Fiat'}</ToggleButton>
+              </ToggleButtonGroup>
+              <TextField
+                value={effectiveDivideMode === 'count' ? state.divideCount : state.divideFiatPerTx}
+                onChange={(e) => {
+                  const val = sanitizeNumber(e.target.value)
+                  onChange(effectiveDivideMode === 'count' ? { divideCount: val } : { divideFiatPerTx: val })
+                }}
+                size="small"
+                sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: '0.75rem', py: '4px' } }}
+                slotProps={{ htmlInput: { inputMode: 'numeric' } }}
+              />
+            </Box>
+            {dividedPreview && (
+              <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary' }}>
+                Preview: {dividedPreview}
+              </Typography>
+            )}
+          </Box>
+        )}
+      </Box>
+
       {selectedNet && (
         <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>
           Network: {selectedNet.name} | Fee: {selectedNet.fee}
@@ -196,14 +299,25 @@ export default function WithdrawTab({ exchange, metadata, state, onChange }: Wit
         onClick={() => {
           const destLabel = destination === 'custom' ? 'custom' : EXCHANGES.find(e => e.id === destination)?.label ?? destination
           // Phase 2: include API response (txId, status, fee) in log data
-          log({
-            level: 'INFO', category: 'WITHDRAW', source: exchange.id,
-            message: `[${exchange.label}] Withdraw ${amount || '0'} ${asset} → ${destLabel} (${networkName}) addr=${address}${memo ? ` memo=${memo}` : ''}`,
-            data: { exchange: exchange.label, asset, network: networkName, destination: destLabel, address, memo: memo || undefined, amount },
-          })
+          if (state.divided && divCount > 1) {
+            for (let i = 0; i < divCount; i++) {
+              const txAmount = i === 0 ? divEach + divRemainder : divEach
+              log({
+                level: 'INFO', category: 'WITHDRAW', source: exchange.id,
+                message: `[${exchange.label}] Withdraw ${asset} ×${i + 1}/${divCount}: ${formatNum(txAmount)} → ${destLabel} (${networkName}) addr=${address}${memo ? ` memo=${memo}` : ''}`,
+                data: { exchange: exchange.label, asset, network: networkName, destination: destLabel, address, memo: memo || undefined, amount: txAmount, txIndex: i + 1, txTotal: divCount },
+              })
+            }
+          } else {
+            log({
+              level: 'INFO', category: 'WITHDRAW', source: exchange.id,
+              message: `[${exchange.label}] Withdraw ${amount || '0'} ${asset} → ${destLabel} (${networkName}) addr=${address}${memo ? ` memo=${memo}` : ''}`,
+              data: { exchange: exchange.label, asset, network: networkName, destination: destLabel, address, memo: memo || undefined, amount },
+            })
+          }
         }}
       >
-        Withdraw (Mock)
+        {state.divided && divCount > 1 ? `Withdraw ×${divCount} (Mock)` : 'Withdraw (Mock)'}
       </Button>
     </Box>
   )
