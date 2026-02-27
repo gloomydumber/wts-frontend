@@ -247,8 +247,8 @@ export default function OrderTab({ exchange, pair, state, onChange }: OrderTabPr
               sellOnlyRef.current = true
               log({
                 level: 'INFO', category: 'ORDER', source: exchange.id,
-                message: `[${exchange.label}] Sell-Only loop started — ${pair} qty=${quantity} interval=${state.pollInterval}ms`,
-                data: { exchange: exchange.label, pair, quantity, pollInterval: state.pollInterval },
+                message: `[${exchange.label}] Sell-Only loop started — ${pair} qty=${quantity} @${orderType === 'limit' ? price : 'marketPrice'} interval=${state.pollInterval}ms`,
+                data: { exchange: exchange.label, pair, orderType, price, quantity, pollInterval: state.pollInterval },
               })
               // Phase 2: start polling loop here
             } else {
