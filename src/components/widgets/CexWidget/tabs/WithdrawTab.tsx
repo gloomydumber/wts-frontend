@@ -55,16 +55,12 @@ export default function WithdrawTab({ exchange, metadata, state, onChange }: Wit
   const getDestinationAddress = (destId: string) => {
     const destAddresses = mockDepositAddresses[destId]
     if (!destAddresses?.[asset]) return null
-    // Try matching by network name
-    const entry = destAddresses[asset][networkName]
-    if (entry) return entry
-    // Fallback: first available network for the asset
-    const networks = Object.values(destAddresses[asset])
-    return networks[0] || null
+    // Exact network match only — no fallback (wrong network = lost funds)
+    return destAddresses[asset][networkName] || null
   }
 
-  // Check if destination exchange has a deposit address for current asset
-  const destHasAsset = (destId: string) => !!mockDepositAddresses[destId]?.[asset]
+  // Check if destination exchange supports the current asset AND network
+  const destSupported = (destId: string) => !!mockDepositAddresses[destId]?.[asset]?.[networkName]
 
   const handleAssetChange = (a: string) => {
     onChange({ asset: a, networkIdx: 0, destination: 'custom', address: '', memo: '' })
@@ -77,7 +73,13 @@ export default function WithdrawTab({ exchange, metadata, state, onChange }: Wit
     if (destination !== 'custom') {
       const net = nets[idx]
       const destEntry = net ? (mockDepositAddresses[destination]?.[asset]?.[net.name] || null) : null
-      onChange({ networkIdx: idx, address: destEntry?.address || '', memo: destEntry?.memo || '' })
+      if (destEntry) {
+        // Destination supports the new network — update address
+        onChange({ networkIdx: idx, address: destEntry.address, memo: destEntry.memo || '' })
+      } else {
+        // Destination doesn't support this network — reset to custom
+        onChange({ networkIdx: idx, destination: 'custom', address: '', memo: '' })
+      }
     } else {
       onChange({ networkIdx: idx })
     }
@@ -116,7 +118,9 @@ export default function WithdrawTab({ exchange, metadata, state, onChange }: Wit
     if (id === 'custom') return 'Custom'
     const ex = otherExchanges.find((e) => e.id === id)
     if (!ex) return id
-    return destHasAsset(id) ? ex.label : `${ex.label} (no ${asset})`
+    if (!mockDepositAddresses[id]?.[asset]) return `${ex.label} (no ${asset})`
+    if (!destSupported(id)) return `${ex.label} (no ${networkName})`
+    return ex.label
   }
 
   return (
@@ -160,7 +164,7 @@ export default function WithdrawTab({ exchange, metadata, state, onChange }: Wit
           onChange={(_, v) => { if (v) handleDestinationChange(v) }}
           options={destinationOptions}
           getOptionLabel={getDestLabel}
-          getOptionDisabled={(opt) => opt !== 'custom' && !destHasAsset(opt)}
+          getOptionDisabled={(opt) => opt !== 'custom' && !destSupported(opt)}
           size="small"
           fullWidth
           disableClearable
