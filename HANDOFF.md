@@ -2889,3 +2889,24 @@ The drag/resize lag has been present since `rgl-practice` and is not fully resol
 | File | Change |
 |------|--------|
 | `src/components/widgets/ChartWidget/LightweightChart.tsx` | Added `fmtVol`, `setLegend` helpers; `legendRef`/`candlesRef`/`isHoveringRef` refs; crosshair subscription; legend div in JSX |
+
+### 2026-02-27: Per-widget Refresh Button
+
+**Goal:** Add a refresh button to widgets with live WebSocket connections, allowing key-based remount to recover from stale connections without a full page reload.
+
+**Changes:**
+- Added `refreshable` flag to `WidgetConfig` type
+- Marked Orderbook, PremiumTable, Chart as `refreshable: true` in widget registry
+- Added `getWidgetConfig()` helper in `defaults.ts`
+- Refresh button (↻) positioned top-right (next to close button), green on hover
+- Uses React key change to fully remount the widget component
+
+**Files changed:**
+
+| File | Change |
+|------|--------|
+| `src/types/layout.ts` | Added `refreshable?: boolean` to `WidgetConfig` |
+| `src/layout/defaults.ts` | Added `refreshable: true` to 3 widgets, added `getWidgetConfig()` |
+| `src/layout/GridLayout.tsx` | Added `refreshKeys` state, `refreshWidget` callback, refresh button + key-based remount |
+| `src/styles/GlobalStyles.tsx` | Added `.refresh-button` styles |
+| `package.json` | `@gloomydumber/crypto-orderbook` → `^0.3.9` |
