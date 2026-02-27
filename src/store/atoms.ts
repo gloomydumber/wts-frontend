@@ -29,6 +29,12 @@ export const chartQuoteAtom = atomWithStorage<string>('chartQuote', 'USDT')
 export const chartBaseAtom = atomWithStorage<string>('chartBase', 'BTC')
 export const chartIntervalAtom = atomWithStorage<string>('chartInterval', '4h')
 
+// Widget settings dialog open state (keyed by widget id)
+export const widgetSettingsOpenAtom = atom<Record<string, boolean>>({})
+
+// Widget settings disabled state (keyed by widget id)
+export const widgetSettingsDisabledAtom = atom<Record<string, boolean>>({})
+
 // DEX wallets — multi-wallet support, persisted to localStorage
 // Replaces old dexWalletAtom + dexMnemonicAtom
 const dexWalletsDefault: DexWalletsState = { wallets: [], activeWalletId: '' }

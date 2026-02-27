@@ -6,12 +6,12 @@ export const WIDGET_REGISTRY: WidgetConfig[] = [
   { id: 'Console', label: 'Console', group: 'system', permanent: true, defaultVisible: true },
   // Exchanges
   { id: 'Cex', label: 'CEX', group: 'exchanges', defaultVisible: true },
-  { id: 'Dex', label: 'DEX', group: 'exchanges', defaultVisible: true },
+  { id: 'Dex', label: 'DEX', group: 'exchanges', defaultVisible: true, hasSettings: true },
   // Market
   { id: 'Orderbook', label: 'Orderbook', group: 'market', defaultVisible: true, refreshable: true },
   { id: 'PremiumTable', label: 'Premium Table', group: 'market', defaultVisible: true, refreshable: true },
   { id: 'Chart', label: 'Chart', group: 'market', defaultVisible: true, refreshable: true },
-  { id: 'ExchangeCalc', label: 'Exchange Calculator', group: 'market', defaultVisible: true },
+  { id: 'ExchangeCalc', label: 'Exchange Calculator', group: 'market', defaultVisible: true, hasSettings: true },
   // Utilities
   { id: 'Memo', label: 'Memo', group: 'utilities', defaultVisible: false },
   { id: 'Shortcut', label: 'Shortcut', group: 'utilities', defaultVisible: false },

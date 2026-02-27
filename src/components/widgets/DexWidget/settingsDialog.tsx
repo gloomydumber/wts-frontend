@@ -139,7 +139,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
         >
           <Tab value="rpc" label="RPC Endpoints" sx={{ minHeight: 32, fontSize: '0.6rem' }} />
           <Tab value="swap" label="Swap Settings" sx={{ minHeight: 32, fontSize: '0.6rem' }} />
-          <Tab value="wallet" label="Wallet" sx={{ minHeight: 32, fontSize: '0.6rem' }} />
+          <Tab value="wallet" label="Wallet" disabled={!activeWallet} sx={{ minHeight: 32, fontSize: '0.6rem' }} />
         </Tabs>
 
         <Box sx={{ p: 2, height: 400, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>

@@ -5,7 +5,7 @@ import { setUpdatesPaused as setPremiumTablePaused } from '@gloomydumber/premium
 import { setUpdatesPaused as setOrderbookPaused } from '@gloomydumber/crypto-orderbook'
 import { setChartPaused } from '../components/widgets/ChartWidget'
 
-import { layoutsAtom, currentBreakpointAtom, widgetVisibilityAtom } from '../store/atoms'
+import { layoutsAtom, currentBreakpointAtom, widgetVisibilityAtom, widgetSettingsOpenAtom, widgetSettingsDisabledAtom } from '../store/atoms'
 import {
   BREAKPOINTS,
   COLS,
@@ -31,6 +31,8 @@ export default function GridLayout() {
   const [layouts, setLayouts] = useAtom(layoutsAtom)
   const setCurrentBreakpoint = useSetAtom(currentBreakpointAtom)
   const [visibility, setVisibility] = useAtom(widgetVisibilityAtom)
+  const [, setSettingsOpen] = useAtom(widgetSettingsOpenAtom)
+  const [settingsDisabled] = useAtom(widgetSettingsDisabledAtom)
 
   const [windowWidth, setWindowWidth] = useState(window.innerWidth)
   const [isInteracting, setIsInteracting] = useState(false)
@@ -39,6 +41,10 @@ export default function GridLayout() {
   const refreshWidget = useCallback((id: string) => {
     setRefreshKeys((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }))
   }, [])
+
+  const openSettings = useCallback((id: string) => {
+    setSettingsOpen((prev) => ({ ...prev, [id]: true }))
+  }, [setSettingsOpen])
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth)
@@ -132,15 +138,31 @@ export default function GridLayout() {
     >
       {currentLayout.map((item: Layout) => {
         const config = getWidgetConfig(item.i)
+        const hasClose = !config?.permanent
+        const hasSettingsBtn = !!config?.hasSettings
+        const isDisabled = !!settingsDisabled[item.i]
+
+        // Dynamic right offsets: close=5px, settings next, refresh shifts based on what's present
+        const settingsRight = hasClose ? 22 : 5
+        const refreshRight = (hasClose ? 17 : 0) + (hasSettingsBtn ? 17 : 0) + 5
 
         return (
           <div key={item.i} className="grid-item">
             {config?.refreshable && (
-              <div className="refresh-button" onClick={() => refreshWidget(item.i)}>
+              <div className="refresh-button" style={{ right: refreshRight }} onClick={() => refreshWidget(item.i)}>
                 ↻
               </div>
             )}
-            {!config?.permanent && (
+            {hasSettingsBtn && (
+              <div
+                className={`settings-button${isDisabled ? ' disabled' : ''}`}
+                style={{ right: settingsRight }}
+                onClick={isDisabled ? undefined : () => openSettings(item.i)}
+              >
+                ⚙︎
+              </div>
+            )}
+            {hasClose && (
               <div className="close-button" onClick={() => removeItem(item.i)}>
                 &times;
               </div>

@@ -863,7 +863,7 @@ Steps 1–3 are **already implemented** in Phase 1 with mock data:
 | 17 | Build MemoWidget (persistent user notes) | 1 | DONE |
 | 18 | Build ShortcutWidget (quick links to exchange pages) | 1 | DONE |
 | 19 | Build ExchangeCalcWidget (import from published package) | 1 | DONE (real package, live data) |
-| 20 | Workspace save/load profiles | 1 | TODO |
+| ~~20~~ | ~~Workspace save/load profiles~~ | 1 | REMOVED — not needed |
 | 21 | AppBar + Drawer (port from rgl-practice) | 1 | DONE |
 | 22 | **Build ExchangeWidget** (merged: order, deposit, withdraw, transfer, margin) | 1 | DONE |
 | 12–18 | Tauri integration, Rust backend, DEX, more exchanges | 2–3+ | OUT OF SCOPE — will be done in a separate Tauri project |
@@ -3051,3 +3051,56 @@ Previously, hiding a widget and toggling it back on would place it at the bottom
 | `src/components/widgets/TransferWidget/` | **DELETED** |
 | `src/components/widgets/WithdrawWidget/` | **DELETED** |
 | `src/components/widgets/WidgetPlaceholder.tsx` | **DELETED** |
+
+### 2026-02-28: Settings Cogwheel on Widget Title Bar
+
+Moved settings triggers from inside widget content to the widget title bar as a cogwheel icon (`⚙︎` text-mode), matching the existing `×` close and `↻` refresh Unicode button pattern.
+
+**Two widgets affected:** DEX and Exchange Calculator.
+
+**1. `crypto-exchange-rate-calculator` package (v0.0.4 → v0.0.5):**
+
+Added 3 optional props for controlled settings dialog state:
+- `settingsOpen?: boolean` — when provided, hides internal gear buttons and drives dialog externally
+- `onSettingsClose?: () => void` — callback when dialog closes
+- `settingsTitle?: string` — overrides "Settings" text in dialog title
+
+Backward compatible — omitting `settingsOpen` keeps existing uncontrolled behavior with internal gear icons.
+
+**2. `WidgetConfig.hasSettings` flag:**
+
+New `hasSettings?: boolean` field in `WidgetConfig` (same pattern as `permanent` and `refreshable`). Set on `Dex` and `ExchangeCalc` in the registry.
+
+**3. Settings atoms (Jotai):**
+
+- `widgetSettingsOpenAtom` — `Record<string, boolean>` keyed by widget id, drives open/close state
+- `widgetSettingsDisabledAtom` — `Record<string, boolean>` for future use (nothing writes to it currently)
+
+**4. Title bar cogwheel button (GridLayout.tsx):**
+
+For widgets with `hasSettings`, a `⚙︎` button renders between refresh and close buttons. Dynamic `right` offsets calculated based on which buttons are present (close=5px, settings=22px, refresh shifts further left).
+
+**5. DEX Settings Dialog — Wallet tab disabled when no wallets:**
+
+The cogwheel itself is always clickable. Inside the dialog, the "Wallet" tab is `disabled={!activeWallet}` when no wallets exist. The old internal gear icon button (inside chain tabs row) was removed.
+
+**6. Exchange Calculator — controlled settings with custom title:**
+
+`ExchangeCalcWidget` passes `settingsOpen`, `onSettingsClose`, and `settingsTitle="Calculator Settings"` to the package component. The package hides its internal gear buttons in controlled mode.
+
+**Files changed:**
+
+| File | Change |
+|------|--------|
+| `package.json` | Bumped `@gloomydumber/crypto-exchange-rate-calculator` to `^0.0.5` |
+| `package-lock.json` | Updated lockfile |
+| `src/types/layout.ts` | Added `hasSettings?: boolean` to `WidgetConfig` |
+| `src/layout/defaults.ts` | Set `hasSettings: true` on `Dex` and `ExchangeCalc` |
+| `src/store/atoms.ts` | Added `widgetSettingsOpenAtom` and `widgetSettingsDisabledAtom` |
+| `src/layout/GridLayout.tsx` | Settings cogwheel button with dynamic positioning, reads settings atoms |
+| `src/styles/GlobalStyles.tsx` | Added `.settings-button` CSS (with `.disabled` variant) |
+| `src/components/widgets/DexWidget/index.tsx` | Removed internal gear icon, reads/writes `widgetSettingsOpenAtom['Dex']` via Jotai |
+| `src/components/widgets/DexWidget/settingsDialog.tsx` | Wallet tab disabled when no active wallet |
+| `src/components/widgets/ExchangeCalcWidget/index.tsx` | Passes controlled settings props to package component |
+
+**Sibling repo changed:** `crypto-exchange-rate-calculator` — `ExchangeCalc.tsx`, `Calculator.tsx`, `SettingsDialog.tsx`, `package.json` (v0.0.5, already committed + pushed separately)

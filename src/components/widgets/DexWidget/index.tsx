@@ -16,7 +16,6 @@ import {
   FormControlLabel,
   Menu,
 } from '@mui/material'
-import SettingsIcon from '@mui/icons-material/Settings'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import AddIcon from '@mui/icons-material/Add'
 import {
@@ -37,7 +36,7 @@ import {
   type DexWallet,
 } from './types'
 import { useDexChainMetadata, type DexChainMetadata } from './preload'
-import { dexWalletsAtom } from '../../../store/atoms'
+import { dexWalletsAtom, widgetSettingsOpenAtom } from '../../../store/atoms'
 import {
   generateMnemonic,
   validateMnemonic,
@@ -60,7 +59,8 @@ export default function DexWidget() {
   const [perpsStates, setPerpsStates] = useState<Record<string, PerpsTabState>>({})
   const [disperseStates, setDisperseStates] = useState<Record<string, DisperseTabState>>({})
   const [transferStates, setTransferStates] = useState<Record<string, TransferTabState>>({})
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsOpenMap, setSettingsOpenMap] = useAtom(widgetSettingsOpenAtom)
+  const settingsOpen = !!settingsOpenMap['Dex']
 
   const [walletsState, setWalletsState] = useAtom(dexWalletsAtom)
 
@@ -286,6 +286,7 @@ export default function DexWidget() {
 
   const hasWallets = walletsState.wallets.length > 0
   const needsWalletSetup = !hasWallets && !addingWallet
+
   const showAddWalletSetup = addingWallet && setupMode !== 'none'
 
   return (
@@ -401,9 +402,6 @@ export default function DexWidget() {
             />
           ))}
         </Tabs>
-        <IconButton size="small" onClick={() => setSettingsOpen(true)} sx={{ color: 'text.secondary', mr: 0.5 }}>
-          <SettingsIcon sx={{ fontSize: 16 }} />
-        </IconButton>
       </Box>
 
       {/* No wallet: initial setup prompt */}
@@ -497,7 +495,7 @@ export default function DexWidget() {
       )}
 
       {/* Settings dialog */}
-      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpenMap((prev) => ({ ...prev, Dex: false }))} />
     </Box>
   )
 }

@@ -16,6 +16,7 @@ export interface WidgetConfig {
   permanent?: boolean // Cannot be closed (e.g., ConsoleWidget)
   defaultVisible?: boolean
   refreshable?: boolean // Show refresh button (key-based remount)
+  hasSettings?: boolean // Show settings cogwheel on title bar
 }
 
 // Re-export for convenience
