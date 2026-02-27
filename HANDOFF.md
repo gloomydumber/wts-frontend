@@ -2910,3 +2910,32 @@ The drag/resize lag has been present since `rgl-practice` and is not fully resol
 | `src/layout/GridLayout.tsx` | Added `refreshKeys` state, `refreshWidget` callback, refresh button + key-based remount |
 | `src/styles/GlobalStyles.tsx` | Added `.refresh-button` styles |
 | `package.json` | `@gloomydumber/crypto-orderbook` → `^0.3.9` |
+
+### 2026-02-27: Chart Tab Reorder + CEX Withdraw/Order Fixes
+
+**Chart — Custom Chart as default tab:**
+- Swapped tab order: Custom Chart (lightweight-charts, ~45KB) is now tab 0, TradingView iframe is tab 1
+- Lighter and faster — iframe only loads when user explicitly clicks TradingView tab
+
+**CEX Withdraw — exact network match enforcement:**
+- Removed fallback logic in `getDestinationAddress` and `handleNetworkChange` — exact network match only (wrong network = lost funds)
+- Destination dropdown now disables options that don't support the selected network, with label e.g. `Bybit (no BEP20)`
+- Network change resets destination to `custom` if current destination doesn't support the new network
+- Added console log when destination auto-fills address (with memo indicator)
+- Added Phase 2 comments for API fetch + loading UI
+
+**CEX Order — sell-only loop log improvement:**
+- Log now includes `@price` for limit orders and `@marketPrice` for market orders
+
+**Base asset selector width:**
+- Widened from 100 → 120 in both ChartToolbar and OrderbookWidget (v0.3.10) for long ticker names (e.g. "SAHARA")
+
+**Files changed:**
+
+| File | Change |
+|------|--------|
+| `src/components/widgets/ChartWidget/index.tsx` | Swapped tab order (Custom Chart first) |
+| `src/components/widgets/ChartWidget/ChartToolbar.tsx` | Base selector width 100 → 120 |
+| `src/components/widgets/CexWidget/tabs/WithdrawTab.tsx` | Exact network match, disabled options, console log on paste, Phase 2 comments |
+| `src/components/widgets/CexWidget/tabs/OrderTab.tsx` | Added price info to sell-only loop log |
+| `package.json` | `@gloomydumber/crypto-orderbook` → `^0.3.10` |
