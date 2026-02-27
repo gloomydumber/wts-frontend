@@ -72,6 +72,8 @@ export default function WithdrawTab({ exchange, metadata, state, onChange }: Wit
 
   const handleNetworkChange = (idx: number) => {
     // Re-resolve destination address for new network
+    // Phase 2: Network change with a selected destination will re-fetch the deposit
+    // address from the destination exchange API (same loading UI as handleDestinationChange).
     if (destination !== 'custom') {
       const net = nets[idx]
       const destEntry = net ? (mockDepositAddresses[destination]?.[asset]?.[net.name] || null) : null
@@ -81,12 +83,25 @@ export default function WithdrawTab({ exchange, metadata, state, onChange }: Wit
     }
   }
 
+  /**
+   * Phase 2: Selecting a destination exchange will call the exchange's deposit-address
+   * API (e.g. Binance GET /sapi/v1/capital/deposit/address) via Tauri invoke.
+   * This is async and may take 1–3s — show a loading spinner on the address field
+   * while fetching. On failure, fall back to 'custom' with an error toast.
+   */
   const handleDestinationChange = (destId: string) => {
     if (destId === 'custom') {
       onChange({ destination: 'custom', address: '', memo: '' })
     } else {
+      const destLabel = EXCHANGES.find((e) => e.id === destId)?.label ?? destId
       const entry = getDestinationAddress(destId)
       onChange({ destination: destId, address: entry?.address || '', memo: entry?.memo || '' })
+      if (entry?.address) {
+        log({
+          level: 'INFO', category: 'WITHDRAW', source: exchange.id,
+          message: `[${destLabel}] ${asset} ${networkName} deposit address pasted to [${exchange.label}] Withdraw address field${entry.memo ? ' (+ memo)' : ''}`,
+        })
+      }
     }
   }
 
