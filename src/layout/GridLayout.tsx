@@ -52,9 +52,24 @@ export default function GridLayout() {
   // - componentDidUpdate skips during activeDrag
   // - onLayoutMaybeChanged uses deepEqual (fast-equals) before firing
   // - only fires at dragStop/resizeStop/mount, not per-frame
+  //
+  // Merge: RGL only reports visible widgets. Preserve hidden widget positions
+  // so toggling a widget off then on restores its last location.
   const onLayoutChange = useCallback(
     (_layout: Layout[], newLayouts: Layouts) => {
-      setLayouts(newLayouts)
+      setLayouts((prev: Layouts) => {
+        const merged: Layouts = {}
+        for (const bp of Object.keys(newLayouts)) {
+          const visibleIds = new Set(newLayouts[bp].map((l: Layout) => l.i))
+          const hidden = (prev[bp] || []).filter((l: Layout) => !visibleIds.has(l.i))
+          merged[bp] = [...newLayouts[bp], ...hidden]
+        }
+        // Keep breakpoints that RGL didn't report (e.g., untouched small breakpoints)
+        for (const bp of Object.keys(prev)) {
+          if (!(bp in merged)) merged[bp] = prev[bp]
+        }
+        return merged
+      })
     },
     [setLayouts],
   )

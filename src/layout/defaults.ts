@@ -2,15 +2,19 @@ import type { WidgetConfig, WidgetLayoutItem, Layouts } from '../types/layout'
 
 // Widget registry — single source of truth for all widget metadata
 export const WIDGET_REGISTRY: WidgetConfig[] = [
-  { id: 'Console', label: 'Console', permanent: true, defaultVisible: true },
-  { id: 'Cex', label: 'CEX', defaultVisible: true },
-  { id: 'Orderbook', label: 'Orderbook', defaultVisible: true, refreshable: true },
-  { id: 'PremiumTable', label: 'Premium Table', defaultVisible: true, refreshable: true },
-  { id: 'Chart', label: 'Chart', defaultVisible: true, refreshable: true },
-  { id: 'ExchangeCalc', label: 'Exchange Calculator', defaultVisible: true },
-  { id: 'Dex', label: 'DEX', defaultVisible: true },
-  { id: 'Memo', label: 'Memo', defaultVisible: false },
-  { id: 'Shortcut', label: 'Shortcut', defaultVisible: false },
+  // System
+  { id: 'Console', label: 'Console', group: 'system', permanent: true, defaultVisible: true },
+  // Exchanges
+  { id: 'Cex', label: 'CEX', group: 'exchanges', defaultVisible: true },
+  { id: 'Dex', label: 'DEX', group: 'exchanges', defaultVisible: true },
+  // Market
+  { id: 'Orderbook', label: 'Orderbook', group: 'market', defaultVisible: true, refreshable: true },
+  { id: 'PremiumTable', label: 'Premium Table', group: 'market', defaultVisible: true, refreshable: true },
+  { id: 'Chart', label: 'Chart', group: 'market', defaultVisible: true, refreshable: true },
+  { id: 'ExchangeCalc', label: 'Exchange Calculator', group: 'market', defaultVisible: true },
+  // Utilities
+  { id: 'Memo', label: 'Memo', group: 'utilities', defaultVisible: false },
+  { id: 'Shortcut', label: 'Shortcut', group: 'utilities', defaultVisible: false },
 ]
 
 // Lookup helpers

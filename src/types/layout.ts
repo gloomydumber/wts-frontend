@@ -5,10 +5,14 @@ export interface WidgetLayoutItem extends Layout {
   permanent?: boolean
 }
 
+// Widget groups for drawer sections
+export type WidgetGroup = 'system' | 'exchanges' | 'market' | 'utilities'
+
 // Widget registry entry
 export interface WidgetConfig {
   id: string
   label: string
+  group: WidgetGroup
   permanent?: boolean // Cannot be closed (e.g., ConsoleWidget)
   defaultVisible?: boolean
   refreshable?: boolean // Show refresh button (key-based remount)

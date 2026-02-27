@@ -862,7 +862,7 @@ Steps 1–3 are **already implemented** in Phase 1 with mock data:
 | 16 | ~~Build MarginWidget~~ | 1 | MERGED → ExchangeWidget |
 | 17 | Build MemoWidget (persistent user notes) | 1 | DONE |
 | 18 | Build ShortcutWidget (quick links to exchange pages) | 1 | DONE |
-| 19 | Build ExchangeCalcWidget (import from published package) | 1 | TODO — blocked until package is published |
+| 19 | Build ExchangeCalcWidget (import from published package) | 1 | DONE (real package, live data) |
 | 20 | Workspace save/load profiles | 1 | TODO |
 | 21 | AppBar + Drawer (port from rgl-practice) | 1 | DONE |
 | 22 | **Build ExchangeWidget** (merged: order, deposit, withdraw, transfer, margin) | 1 | DONE |
@@ -2981,3 +2981,73 @@ The drag/resize lag has been present since `rgl-practice` and is not fully resol
 | `src/components/widgets/CexWidget/tabs/OrderTab.tsx` | Continuous mode: state, UI (checkboxes), logging, Phase 2 comments |
 | `src/store/atoms.ts` | Added `chartExchangeAtom`, `chartQuoteAtom`, `chartBaseAtom`, `chartIntervalAtom` (atomWithStorage) |
 | `src/components/widgets/ChartWidget/index.tsx` | Replaced useState with useAtom for exchange/quote/base/interval — persists across refresh |
+
+### 2026-02-27: Cleanup + Drawer Improvements + Widget Position Restore
+
+**1. Deleted 8 unused widget directories/files:**
+
+Removed legacy widgets that were merged into CexWidget or never used. None were imported by `widgets/index.ts` or any other file.
+
+| Deleted | Reason |
+|---------|--------|
+| `ArbitrageWidget/` | Unused standalone widget |
+| `BalanceWidget/` | Merged into CexWidget |
+| `DepositWidget/` | Merged into CexWidget |
+| `OrderWidget/` | Merged into CexWidget |
+| `MarginWidget/` | Merged into CexWidget |
+| `TransferWidget/` | Merged into CexWidget |
+| `WithdrawWidget/` | Merged into CexWidget |
+| `WidgetPlaceholder.tsx` | Generic placeholder, all widgets now fully implemented |
+
+**2. Drawer — per-widget icons + grouped sections:**
+
+Each widget now has a unique MUI TwoTone icon instead of the generic `WidgetsTwoTone` for all / `LockTwoTone` for permanent:
+
+| Widget | Icon |
+|--------|------|
+| Console | `TerminalTwoTone` (disabled row, no lock icon) |
+| CEX | `AccountBalanceTwoTone` |
+| DEX | `TokenTwoTone` |
+| Orderbook | `MenuBookTwoTone` |
+| Premium Table | `TableChartTwoTone` |
+| Chart | `CandlestickChartTwoTone` |
+| Exchange Calculator | `CalculateTwoTone` |
+| Memo | `StickyNote2TwoTone` |
+| Shortcut | `LaunchTwoTone` |
+
+Widgets are now grouped into sections with `ListSubheader` dividers:
+- **System** — Console
+- **Exchanges** — CEX, DEX
+- **Market** — Orderbook, Premium Table, Chart, Exchange Calculator
+- **Utilities** — Memo, Shortcut
+
+Added `group` field (`WidgetGroup` type) to `WidgetConfig` in `types/layout.ts`. Group order and labels defined in `GROUP_ORDER` array in `Drawer.tsx`.
+
+**3. Widget position restore on toggle:**
+
+Previously, hiding a widget and toggling it back on would place it at the bottom of the grid (position lost). Two fixes:
+
+- **`onLayoutChange` merge (GridLayout.tsx):** RGL only reports visible widgets. The callback now merges hidden widget positions back from the previous state, so positions are never dropped from the `layoutsAtom` (which is `atomWithStorage` → localStorage). No extra storage key needed.
+
+- **Overlap shift on restore (Drawer.tsx):** When restoring a widget, overlapping widgets (that compacted into its space while hidden) are shifted down by the restored widget's height before visibility is flipped. This ensures the restored widget gets its exact saved position.
+
+**Known limitation:** The overlap shift is a heuristic — shifted widgets may cascade-overlap with widgets below them. RGL's compaction handles the cascade but the resulting layout may not be perfect if the user rearranged heavily while a widget was hidden. A more robust approach (discussed, not implemented) would be to snapshot the full layout on hide and restore it entirely on show, at the cost of an extra localStorage key and sync logic.
+
+**Task tracker update:** #19 (ExchangeCalcWidget) marked DONE — it was already implemented via the `@gloomydumber/crypto-exchange-rate-calculator` package. Only #20 (Workspace save/load profiles) remains for Phase 1.
+
+**Files changed:**
+
+| File | Change |
+|------|--------|
+| `src/types/layout.ts` | Added `WidgetGroup` type, `group` field to `WidgetConfig` |
+| `src/layout/defaults.ts` | Added `group` to all `WIDGET_REGISTRY` entries, reordered (DEX after CEX) |
+| `src/presenter/Drawer.tsx` | Per-widget icons, grouped sections, overlap-shift restore logic, removed `getCurrentBreakpoint` import |
+| `src/layout/GridLayout.tsx` | `onLayoutChange` merge: preserves hidden widget positions from prev state |
+| `src/components/widgets/ArbitrageWidget/` | **DELETED** |
+| `src/components/widgets/BalanceWidget/` | **DELETED** |
+| `src/components/widgets/DepositWidget/` | **DELETED** |
+| `src/components/widgets/OrderWidget/` | **DELETED** |
+| `src/components/widgets/MarginWidget/` | **DELETED** |
+| `src/components/widgets/TransferWidget/` | **DELETED** |
+| `src/components/widgets/WithdrawWidget/` | **DELETED** |
+| `src/components/widgets/WidgetPlaceholder.tsx` | **DELETED** |
