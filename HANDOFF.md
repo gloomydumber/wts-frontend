@@ -715,7 +715,18 @@ The Sell-Only mode is designed for arbitrage: buy on exchange A, sell on exchang
 
 ### Concurrency & Parallelism Architecture (Phase 2)
 
-Phase 2 splits the Rust backend into two distinct execution pools — a shared async pool for market data, and dedicated OS threads for latency-critical trading operations.
+Phase 2 splits the Rust backend into two distinct execution pools — a shared async runtime for market data, and a dedicated runtime (with its own resources) for latency-critical trading operations.
+
+#### Core Principle: Shared Runtime vs Dedicated Runtime
+
+The real architectural question is **not** "OS thread vs tokio task." It's **isolation of resources**. A tokio task can be delayed if it shares the same runtime with heavy market-data parsing. But you can achieve the same isolation without abandoning async — by running a **dedicated tokio runtime** on its own OS thread, with its own HTTP client, connection pool, and rate limiter.
+
+```
+WRONG framing:  "Tokio = shared and unpredictable, OS thread = always best"
+RIGHT framing:  "Shared runtime (contention risk) vs Dedicated runtime (isolated resources)"
+```
+
+The sell cannon doesn't need to be a raw blocking thread. It needs its own runtime that **no other work can interfere with**. Whether that runtime uses async internally or raw blocking I/O is an implementation detail.
 
 #### Problem: Redundant Connections
 
@@ -726,7 +737,7 @@ In Phase 1, multiple widgets independently connect to the same exchanges:
 
 Phase 2 must eliminate this redundancy.
 
-#### Shared Data Bus (Async Pool — `tokio`)
+#### Shared Data Bus (Market Data Runtime — `tokio`)
 
 One WebSocket connection per exchange, fan-out to many widget consumers via `tokio::broadcast::channel`:
 
@@ -754,7 +765,7 @@ Each connector parses raw WS frames → typed structs → broadcasts:
 
 This pool handles: all market data WebSocket feeds, REST metadata queries, balance checks, UI-driven queries — anything where latency tolerance is >50ms.
 
-#### Dedicated Sell-Order Thread ("Sell Cannon")
+#### Dedicated Sell-Order Execution ("Sell Cannon")
 
 The sell-only polling scenario for arbitrage is **not** a standard request-response loop. The goal is to fire sell order requests at maximum rate **without waiting for responses**, so that the moment a deposit lands on the target exchange, one of the in-flight requests catches it:
 
@@ -777,65 +788,129 @@ Sequential (what we DON'T do):
   = ~30ms per attempt, deposit may land during the wait gap
 ```
 
-This runs on a **dedicated OS thread**, not the tokio async pool, for two reasons:
-
-1. **Isolation**: Market data processing on the async pool cannot interfere. Even if 6 exchanges blast WebSocket updates simultaneously, the sell-order thread is unaffected.
-2. **Zero scheduling overhead**: No tokio scheduler delay between "response received" and "next request fired". The thread runs a tight loop — build request, send, loop.
+This runs on a **dedicated runtime** (its own OS thread with its own tokio runtime or blocking I/O), completely isolated from the market data runtime:
 
 ```
 ┌──────────────────────────────────────────────────┐
-│  Sell Cannon Thread (dedicated OS thread)         │
+│  Sell Cannon (dedicated runtime, own OS thread)   │
+│  Own HTTP client, own connection pool,            │
+│  own rate limiter — shares nothing with           │
+│  market data runtime.                             │
 │                                                  │
 │  loop:                                           │
 │    build_request()       // pre-signed template  │
 │    fire_non_blocking()   // send, don't wait     │
-│    precise_wait(rate_limit_interval)             │
+│    rate_limiter.wait()   // token bucket pacing   │
 │                                                  │
 │  ONLY job: send sell orders at max rate.         │
-│  Responses collected separately (async).         │
+│  Responses collected separately.                 │
 └──────────┬───────────────────────────────────────┘
            │ responses arrive asynchronously
            ▼
 ┌──────────────────────────────────────────────────┐
-│  Response Collector (async task, separate)         │
+│  Response Collector + State Tracker               │
 │                                                  │
 │  for each response:                              │
 │    if success → signal stop → emit to UI         │
 │    if insufficient_balance → discard (continue)  │
 │    if rate_limited → signal slow down            │
+│    if timeout/network error → unknown state,     │
+│      query order status for reconciliation       │
 └──────────────────────────────────────────────────┘
 ```
 
-The rate limiter uses **precise timing** to maximize request throughput without triggering 429s. For sub-millisecond precision, spin-wait instead of `thread::sleep`:
+**Practical note on OS thread vs async**: A dedicated tokio runtime on its own thread gives both isolation AND async I/O benefits (non-blocking, multiplexed connections). A raw blocking thread is simpler but loses HTTP/2 multiplexing. Either approach achieves the goal — the key is that the sell cannon's resources are **never shared** with market data work. Start with a dedicated tokio runtime; drop to raw blocking only if profiling shows the single-threaded runtime adds measurable overhead.
 
-```rust
-fn precise_wait(duration: Duration) {
-    let target = Instant::now() + duration;
-    while Instant::now() < target {
-        std::hint::spin_loop(); // CPU hint, keeps core hot
-    }
-}
+**Advanced: CPU isolation (`isolcpus`)**: On Linux, the kernel parameter `isolcpus=N` removes CPU core N from the general scheduler. Combined with `core_affinity` to pin the sell cannon thread to that core, this guarantees zero interference from OS background tasks, market data threads, or even the UI process. This is what HFT firms do — overkill for retail, but available if needed.
+
+#### In-Flight Control & Backpressure (More Important Than Timing Precision)
+
+Sub-millisecond timing precision is less important than these three concerns:
+
+**1. Bounded in-flight requests**: Firing without waiting can create an unbounded backlog when the network slows. Cap the number of concurrent in-flight requests (e.g., max 10). If 10 requests are in-flight and none have returned, **wait** — don't keep firing into a stalled connection. OS send buffers can fill up, and "fire-and-forget" can silently fail.
+
+**2. 429 avoidance is critical**: Many exchanges impose **escalating penalties** after repeated 429s — temporary bans (1-minute, 5-minute, or IP-level blocks). A single 429 costs more than hundreds of slightly-slower requests. The rate limiter must be **conservative** — target 90% of the theoretical limit, not 100%. A 429 is not just "one slow request," it can disable the entire sell cannon for minutes.
+
+**3. Graceful degradation**: If the exchange returns 429 or connection errors, the sell cannon must back off immediately (not retry at the same rate). Ramp back up gradually after successful responses resume.
+
+#### Rate Limit Model: Token Bucket, Not Fixed Interval
+
+Exchange rate limits are **not** simple "one request every N milliseconds." They use combinations of:
+
+- **Per-endpoint weights** (Binance: sell order = 1 weight, query order = 4 weight)
+- **Rolling windows** (per second AND per minute, whichever is more restrictive)
+- **Global API-key budgets** shared across all endpoints (market data REST + orders consume from the same pool)
+- **Different limits for order vs market-data endpoints**
+
+A fixed-interval timer (`sleep(50ms)`) is the **wrong model**. Use a **token bucket / budget allocator**:
+
+```
+Binance budget: 1200 weight/min = 20 weight/sec
+
+Token bucket:
+├─ Reserve 80% (960 weight/min) for sell cannon
+├─ Reserve 20% (240 weight/min) for market data REST fallback
+└─ Sell cannon consumes 1 weight per order request
+   = 16 orders/sec sustainable, burst up to 20/sec
+
+If market data REST needs more budget temporarily:
+  → steal from sell cannon reserve only if sell cannon is idle
+
+If sell cannon approaches 429 threshold:
+  → preemptively slow down at 90% budget consumption
 ```
 
-Burns CPU but guarantees firing at the exact maximum allowed rate.
+The token bucket is the **single source of truth** for all API calls to a given exchange. Both the market data runtime and the sell cannon runtime coordinate through it (via `Arc<TokenBucket>`).
+
+#### Idempotency & Order State Reconciliation
+
+Pipelined fire-and-forget creates an inherent problem: **you don't know the outcome of every request.** Network timeouts and connection drops create unknown states — the exchange may have received and executed the order even if you never got a response.
+
+**Requirements:**
+
+1. **Client Order ID (`newClientOrderId`)**: Every request carries a unique client-generated ID. Binance, Bybit, and most exchanges support this. If a request is retried (timeout), use the **same** client order ID — the exchange deduplicates it. No duplicate orders.
+
+2. **State tracker**: After the sell cannon fires, a separate reconciliation task queries order status (`GET /api/v3/order?origClientOrderId=...`) until every in-flight request converges to a known terminal state: `FILLED`, `REJECTED`, `EXPIRED`, or `NEW` (still open → cancel if no longer wanted).
+
+3. **Post-success cleanup**: When one request succeeds (order filled), the remaining in-flight requests will either:
+   - Return "insufficient balance" (the filled order consumed the balance) → safe to ignore
+   - Also succeed (if balance was enough for multiple fills) → state tracker detects and cancels unwanted orders
+   - Timeout → state tracker queries and reconciles
+
+```
+Sell Cannon fires REQ1..REQ10 with clientOrderIds CID1..CID10
+
+REQ3 response: FILLED (success!)
+  → Signal stop to sell cannon
+  → State tracker queries CID1,CID2,CID4..CID10:
+    CID1: REJECTED (insufficient balance before deposit landed) → ok
+    CID2: REJECTED → ok
+    CID4: REJECTED (balance consumed by CID3 fill) → ok
+    ...
+    CID7: timeout (no response) → query exchange → REJECTED → ok
+    CID9: FILLED (unexpected double fill!) → alert user, log
+```
+
+**Without idempotency and reconciliation, the sell cannon is unreliable.** The thread/runtime choice is irrelevant if duplicate orders go undetected or timeouts leave unknown state.
 
 #### Latency Optimization Checklist
 
 | Factor | Impact | Solution |
 |--------|--------|---------|
-| Connection reuse | ~50-100ms saved (no TCP/TLS handshake) | Pre-established HTTP/2 persistent connection pool per exchange, thread-local for sell cannon |
+| Connection reuse | ~50-100ms saved (no TCP/TLS handshake) | Pre-established HTTP/2 persistent connection pool per exchange, dedicated pool for sell cannon |
 | DNS resolution | ~5-20ms if not cached | Pre-resolve and pin exchange API IPs at startup |
 | Request signing | ~0.01ms | Pre-build request templates, only update nonce/timestamp per request |
-| Rate limit budget | 429 = infinite latency | Token bucket: reserve 80% for critical ops, 20% for market data REST fallback |
-| Timer precision | `thread::sleep` has ~1ms jitter | `spin_loop()` for critical thread, tokio timers for everything else |
-| Core affinity (advanced) | Eliminates CPU cache misses from core migration | `core_affinity` crate to pin sell cannon thread to a specific core |
+| Rate limit budget | 429 = catastrophic (temp ban) | Token bucket at 90% capacity, reserved budget for critical ops |
+| In-flight cap | Unbounded backlog if network stalls | Max 10 concurrent in-flight, block if cap reached |
+| Idempotency | Duplicate orders on retry | Client order ID on every request, state reconciliation |
+| Core affinity (advanced) | Eliminates CPU cache misses | `core_affinity` crate; `isolcpus` kernel param on Linux for full core isolation |
 
-#### Summary: Two Pools
+#### Summary: Two Runtimes
 
-| Pool | Thread Model | Used For | Latency Tolerance |
-|------|-------------|----------|------------------|
-| **Async (tokio)** | ~4 threads, thousands of tasks | Market data, REST queries, balance checks, UI events | >50ms (I/O-bound, waiting on network) |
-| **Critical (OS threads)** | 1 dedicated thread per active sell-cannon | Sell order pipelining, withdrawal execution | <1ms scheduling (must fire at max rate) |
+| Runtime | Thread Model | Used For | Key Concern |
+|---------|-------------|----------|-------------|
+| **Market Data (shared tokio)** | ~4 threads, thousands of tasks | WS feeds, REST queries, balance checks, UI events | Subscription aggregation, cache dedup |
+| **Sell Cannon (dedicated runtime)** | Own OS thread, own tokio runtime (or blocking), own HTTP client + connection pool | Pipelined sell orders, withdrawal execution | Isolation, bounded in-flight, idempotency, 429 avoidance, state reconciliation |
 
 ### Pre-load / Bootstrap Layer
 
