@@ -719,14 +719,13 @@ Phase 2 splits the Rust backend into two distinct execution pools — a shared a
 
 #### Core Principle: Shared Runtime vs Dedicated Runtime
 
-The real architectural question is **not** "OS thread vs tokio task." It's **isolation of resources**. A tokio task can be delayed if it shares the same runtime with heavy market-data parsing. But you can achieve the same isolation without abandoning async — by running a **dedicated tokio runtime** on its own OS thread, with its own HTTP client, connection pool, and rate limiter.
+The architectural question is **not** "OS thread vs tokio task" — it's **isolation of resources**. A tokio task can be delayed if it shares the same runtime with heavy market-data parsing. You can achieve isolation either by:
+- A dedicated tokio runtime on its own OS thread (with its own HTTP client, connection pool, rate limiter)
+- A raw blocking OS thread (simpler, but loses HTTP/2 multiplexing)
 
-```
-WRONG framing:  "Tokio = shared and unpredictable, OS thread = always best"
-RIGHT framing:  "Shared runtime (contention risk) vs Dedicated runtime (isolated resources)"
-```
+Either way, the sell cannon needs its own resources that **no other work can interfere with**. The runtime/thread choice is an implementation detail — isolation is what matters.
 
-The sell cannon doesn't need to be a raw blocking thread. It needs its own runtime that **no other work can interfere with**. Whether that runtime uses async internally or raw blocking I/O is an implementation detail.
+**Practical nuance**: A dedicated tokio runtime adds complexity (two runtimes in one process, cross-runtime coordination). A raw blocking thread with `reqwest::blocking` is simpler and sufficient if you don't need HTTP/2 multiplexing for the sell cannon. For pipelining 10+ in-flight requests to the same endpoint, the async runtime's multiplexing is likely worth the complexity. Start with whichever is simpler to implement; refactor if profiling shows a need.
 
 #### Problem: Redundant Connections
 
@@ -823,15 +822,17 @@ This runs on a **dedicated runtime** (its own OS thread with its own tokio runti
 
 **Advanced: CPU isolation (`isolcpus`)**: On Linux, the kernel parameter `isolcpus=N` removes CPU core N from the general scheduler. Combined with `core_affinity` to pin the sell cannon thread to that core, this guarantees zero interference from OS background tasks, market data threads, or even the UI process. This is what HFT firms do — overkill for retail, but available if needed.
 
-#### In-Flight Control & Backpressure (More Important Than Timing Precision)
+#### In-Flight Control & Backpressure
 
-Sub-millisecond timing precision is less important than these three concerns:
+Timing precision matters less than these operational concerns:
 
 **1. Bounded in-flight requests**: Firing without waiting can create an unbounded backlog when the network slows. Cap the number of concurrent in-flight requests (e.g., max 10). If 10 requests are in-flight and none have returned, **wait** — don't keep firing into a stalled connection. OS send buffers can fill up, and "fire-and-forget" can silently fail.
 
 **2. 429 avoidance is critical**: Many exchanges impose **escalating penalties** after repeated 429s — temporary bans (1-minute, 5-minute, or IP-level blocks). A single 429 costs more than hundreds of slightly-slower requests. The rate limiter must be **conservative** — target 90% of the theoretical limit, not 100%. A 429 is not just "one slow request," it can disable the entire sell cannon for minutes.
 
 **3. Graceful degradation**: If the exchange returns 429 or connection errors, the sell cannon must back off immediately (not retry at the same rate). Ramp back up gradually after successful responses resume.
+
+**Context**: These concerns are more likely failure modes than scheduling jitter. The original design overemphasized `spin_loop()` sub-ms precision — irrelevant when rate limit intervals are 50-100ms. The token bucket and in-flight cap are the real safeguards.
 
 #### Rate Limit Model: Token Bucket, Not Fixed Interval
 
@@ -864,34 +865,24 @@ The token bucket is the **single source of truth** for all API calls to a given 
 
 #### Idempotency & Order State Reconciliation
 
-Pipelined fire-and-forget creates an inherent problem: **you don't know the outcome of every request.** Network timeouts and connection drops create unknown states — the exchange may have received and executed the order even if you never got a response.
+**Note**: This is standard exchange integration work, not specific to the pipelined design. Even a simple sequential polling loop needs timeout handling and order status queries. The sell cannon architecture (pipelining, isolation, rate limiting) is sound independently — idempotency is a correctness requirement for **any** order placement system.
 
-**Requirements:**
+**Client Order ID (`newClientOrderId`)**: Every request carries a unique client-generated ID. Binance, Bybit, and most exchanges support this. Trivial to implement (one UUID per request). If a request times out and is retried, reuse the same client order ID — the exchange deduplicates it.
 
-1. **Client Order ID (`newClientOrderId`)**: Every request carries a unique client-generated ID. Binance, Bybit, and most exchanges support this. If a request is retried (timeout), use the **same** client order ID — the exchange deduplicates it. No duplicate orders.
+**Timeout reconciliation**: If a request times out (no response), query order status (`GET /api/v3/order?origClientOrderId=...`) to determine whether the exchange received it. This is the only case where unknown state exists.
 
-2. **State tracker**: After the sell cannon fires, a separate reconciliation task queries order status (`GET /api/v3/order?origClientOrderId=...`) until every in-flight request converges to a known terminal state: `FILLED`, `REJECTED`, `EXPIRED`, or `NEW` (still open → cancel if no longer wanted).
-
-3. **Post-success cleanup**: When one request succeeds (order filled), the remaining in-flight requests will either:
-   - Return "insufficient balance" (the filled order consumed the balance) → safe to ignore
-   - Also succeed (if balance was enough for multiple fills) → state tracker detects and cancels unwanted orders
-   - Timeout → state tracker queries and reconciles
+**Post-success behavior in the deposit-then-sell scenario**: When one request succeeds (order fills, consuming the deposited balance), the remaining in-flight requests will return "insufficient balance" — they self-resolve. A "double fill" would require the balance to support multiple fills, which means more was deposited than expected — an operational edge case, not a concurrency bug. Still, logging all responses and alerting on unexpected fills is good practice.
 
 ```
 Sell Cannon fires REQ1..REQ10 with clientOrderIds CID1..CID10
 
-REQ3 response: FILLED (success!)
-  → Signal stop to sell cannon
-  → State tracker queries CID1,CID2,CID4..CID10:
-    CID1: REJECTED (insufficient balance before deposit landed) → ok
-    CID2: REJECTED → ok
-    CID4: REJECTED (balance consumed by CID3 fill) → ok
-    ...
-    CID7: timeout (no response) → query exchange → REJECTED → ok
-    CID9: FILLED (unexpected double fill!) → alert user, log
-```
+REQ3 response: FILLED (success!) → signal stop
+  Remaining: CID4..CID10 → "insufficient balance" (self-resolve)
+  CID7: timeout → query exchange → REJECTED → ok
 
-**Without idempotency and reconciliation, the sell cannon is unreliable.** The thread/runtime choice is irrelevant if duplicate orders go undetected or timeouts leave unknown state.
+Double fill (unlikely): only if deposited amount > sell order size
+  → alert user, log for manual review
+```
 
 #### Latency Optimization Checklist
 
@@ -902,7 +893,7 @@ REQ3 response: FILLED (success!)
 | Request signing | ~0.01ms | Pre-build request templates, only update nonce/timestamp per request |
 | Rate limit budget | 429 = catastrophic (temp ban) | Token bucket at 90% capacity, reserved budget for critical ops |
 | In-flight cap | Unbounded backlog if network stalls | Max 10 concurrent in-flight, block if cap reached |
-| Idempotency | Duplicate orders on retry | Client order ID on every request, state reconciliation |
+| Idempotency | Unknown state on timeout | Client order ID on every request (standard practice, not sell-cannon-specific) |
 | Core affinity (advanced) | Eliminates CPU cache misses | `core_affinity` crate; `isolcpus` kernel param on Linux for full core isolation |
 
 #### Summary: Two Runtimes
@@ -910,7 +901,7 @@ REQ3 response: FILLED (success!)
 | Runtime | Thread Model | Used For | Key Concern |
 |---------|-------------|----------|-------------|
 | **Market Data (shared tokio)** | ~4 threads, thousands of tasks | WS feeds, REST queries, balance checks, UI events | Subscription aggregation, cache dedup |
-| **Sell Cannon (dedicated runtime)** | Own OS thread, own tokio runtime (or blocking), own HTTP client + connection pool | Pipelined sell orders, withdrawal execution | Isolation, bounded in-flight, idempotency, 429 avoidance, state reconciliation |
+| **Sell Cannon (dedicated runtime)** | Own OS thread, own tokio runtime (or blocking), own HTTP client + connection pool | Pipelined sell orders, withdrawal execution | Isolation, bounded in-flight, 429 avoidance, token bucket coordination |
 
 ### Pre-load / Bootstrap Layer
 
