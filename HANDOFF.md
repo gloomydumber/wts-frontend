@@ -677,6 +677,9 @@ Phase 1 uses mock data and placeholder formulas throughout the frontend. This ta
 | **OrderTab** — Submit | No-op button | Does nothing | Binance `POST /api/v3/order`, Upbit `POST /v1/orders`, etc. | `tabs/OrderTab.tsx` |
 | **OrderTab** — Balances in form | Not shown | No available balance display | Query from balance endpoints, show available balance for selected asset | `tabs/OrderTab.tsx` |
 | **OrderTab** — Sell-Only polling | `pollInterval` field, no actual polling | User sets interval in ms (default 500ms), button starts/cancels loop but no real polling occurs | Implement real polling loop: place sell order → check status → retry at `pollInterval` rate. See "Sell-Only Polling Strategy" section below. | `tabs/OrderTab.tsx` |
+| **OrderTab** — Order status panel | Not implemented | No open order list or fill status | Split Column 2 into order form (top ~60%) + open orders list (bottom ~40%). Show open/partial/filled orders with cancel button. Binance `GET /api/v3/openOrders`, `DELETE /api/v3/order`. Also show pending deposit/withdraw status. | `tabs/OrderTab.tsx` |
+| **BalanceTab** — Refresh button | Not implemented | Balance data is static mock | Add ↻ button right-aligned next to wallet-type tabs. On click: `invoke('get_balances', { exchange, walletType })`. | `tabs/BalanceTab.tsx` |
+| **BalanceTab** — Real-time WS balance | Not implemented | No live balance updates | Opt-in toggle: subscribe to exchange private WS (Binance `userDataStream`, Upbit `myasset`). Reuses same connection as order fill events. Off by default. | `tabs/BalanceTab.tsx` |
 
 **Pattern for replacement:** Each mock currently lives in either `mockData.ts` (shared data) or inline in the tab component (formulas/handlers). In Phase 2:
 1. Replace `mockData.ts` imports with Tauri `invoke()` calls in a data layer
@@ -3294,3 +3297,29 @@ The cogwheel itself is always clickable. Inside the dialog, the "Wallet" tab is 
 | `src/components/widgets/ExchangeCalcWidget/index.tsx` | Passes controlled settings props to package component |
 
 **Sibling repo changed:** `crypto-exchange-rate-calculator` — `ExchangeCalc.tsx`, `Calculator.tsx`, `SettingsDialog.tsx`, `package.json` (v0.0.5, already committed + pushed separately)
+
+### 2026-02-28: CEX Widget Phase 2 Planning — Order Status, Balance Refresh, WS Balance
+
+Planning notes added as code comments and HANDOFF.md tracker entries. No functional changes.
+
+**1. Order Status panel (Phase 2):**
+
+The Order tab lives in Column 2 (flex 3 of the 3-column CEX layout). Currently it contains: Buy/Sell toggle, Limit/Market, Price, Quantity, Sell-Only section, Submit button. Adding order status here requires splitting Column 2 into top ~60% (order form) and bottom ~40% (open orders list).
+
+Bottom panel: scrollable compact list of open orders for current exchange+pair. Each row: `side | qty | price | filled% | status | [cancel]`. Also shows pending deposits/withdrawals as "pending operations." Code comment added in `OrderTab.tsx`.
+
+**2. Balance refresh button (Phase 2):**
+
+↻ button right-aligned next to the wallet-type tabs (`Spot | Margin Iso | Cross | [↻]`) in BalanceTab. When only one wallet type exists (no tabs shown), refresh button still appears at top-right. Phase 2: `invoke('get_balances', { exchange, walletType })`. Code comment with layout sketch added in `BalanceTab.tsx`.
+
+**3. WebSocket real-time balance (Phase 2+, optional):**
+
+Opt-in toggle icon next to balance refresh button. When enabled, subscribes to exchange private WS feed (Binance `userDataStream`, Upbit `myasset` WS, Bybit private WS). No extra connection needed — `userDataStream` already carries order fill events, so balance updates come free on the shared data bus. Off by default because it requires API keys with account permissions.
+
+**Files changed:**
+
+| File | Change |
+|------|--------|
+| `HANDOFF.md` | Added 3 rows to Phase 1→2 mock tracker, session log entry |
+| `src/components/widgets/CexWidget/tabs/OrderTab.tsx` | Phase 2 comment: order status panel layout |
+| `src/components/widgets/CexWidget/tabs/BalanceTab.tsx` | Phase 2 comment: refresh button placement + WS balance |

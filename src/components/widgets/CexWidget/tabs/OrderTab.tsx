@@ -132,6 +132,17 @@ export default function OrderTab({ exchange, pair, state, onChange }: OrderTabPr
     '& .MuiInputLabel-root': { fontSize: '0.75rem' },
   }
 
+  // Phase 2: Order Status panel
+  // Split this column into top (order form, ~60%) and bottom (open orders list, ~40%).
+  // Bottom panel: scrollable list of open orders for current exchange+pair.
+  // Each row: side | qty | price | filled% | status | [cancel button]
+  // Status: NEW, PARTIALLY_FILLED (show filled/total), FILLED, CANCELED, EXPIRED
+  // Cancel button calls invoke('cancel_order', { exchange, orderId }).
+  // Also covers deposit/withdraw status — unified "pending operations" view
+  // that shows: pending deposits (awaiting confirmations), pending withdrawals,
+  // and open orders in one compact list. Alternatively, a dedicated "History"
+  // tab in Column 3 if this column is too cramped.
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, flex: 1 }}>
       <ToggleButtonGroup value={side} exclusive onChange={handleSideChange} fullWidth size="small">

@@ -75,8 +75,26 @@ export default function BalanceTab({ exchange }: { exchange: ExchangeConfig }) {
 
   const margin = isMarginTab(activeTab)
 
+  // Phase 2: Balance refresh button
+  // Add a ↻ button right-aligned next to the wallet-type tabs (Spot/Margin/etc.).
+  // When clicked: invoke('get_balances', { exchange: exchange.id, walletType: activeTab })
+  // and replace mockWalletBalances data with the response.
+  // When only one wallet type exists (no tabs), still show the refresh button at top-right.
+  // Optional Phase 2+: WebSocket-based real-time balance via userDataStream (Binance),
+  // private WS (Bybit), or myasset WS (Upbit). Opt-in toggle icon next to refresh button.
+  // When enabled, balance updates arrive on the shared data bus — no extra connection needed
+  // since userDataStream already carries order fill events. Off by default.
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+      {/* Phase 2: wrap Tabs + refresh button in a flex row:
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Tabs ...>{tabs}</Tabs>
+            <Box sx={{ ml: 'auto', pr: 0.5 }}>
+              <span className="balance-refresh-button" onClick={handleRefresh}>↻</span>
+            </Box>
+          </Box>
+      */}
       {showTabs && (
         <Tabs
           value={activeTab}
