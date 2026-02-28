@@ -713,6 +713,130 @@ The Sell-Only mode is designed for arbitrage: buy on exchange A, sell on exchang
 
 5. **Rust-side polling**: The actual polling loop should run in the Rust backend (Tauri), not in the React frontend. Rust can maintain precise timing with `tokio::time::interval` and handle HTTP retries without JavaScript event loop jitter. The frontend only sends start/stop commands and receives status updates via Tauri events.
 
+### Concurrency & Parallelism Architecture (Phase 2)
+
+Phase 2 splits the Rust backend into two distinct execution pools — a shared async pool for market data, and dedicated OS threads for latency-critical trading operations.
+
+#### Problem: Redundant Connections
+
+In Phase 1, multiple widgets independently connect to the same exchanges:
+- OrderbookWidget → Binance WebSocket (orderbook)
+- PremiumTableWidget → Binance WebSocket (ticker — same endpoint)
+- ChartWidget → Binance REST (kline)
+
+Phase 2 must eliminate this redundancy.
+
+#### Shared Data Bus (Async Pool — `tokio`)
+
+One WebSocket connection per exchange, fan-out to many widget consumers via `tokio::broadcast::channel`:
+
+```
+ExchangeManager (tokio async runtime, ~4 threads)
+├─ BinanceConnector (1 WS connection)
+│   └─ subscribes: btcusdt@depth, btcusdt@ticker, ethusdt@depth, ...
+├─ UpbitConnector   (1 WS connection)
+├─ BybitConnector   (1 WS connection)
+└─ ...
+
+Each connector parses raw WS frames → typed structs → broadcasts:
+  orderbook_tx ──► OrderbookWidget subscriber
+       │
+       └──────► PremiumTableWidget subscriber
+  ticker_tx ───► ChartWidget subscriber
+       │
+       └──────► ExchangeCalcWidget subscriber
+```
+
+- **Subscription aggregation**: When multiple widgets need data from the same exchange, the connector merges subscriptions into one WS stream. When a widget closes, its subscription is removed; if no other widget needs that stream, it's dropped.
+- **REST dedup with cache**: For REST endpoints (kline, exchange rates), a shared cache with TTL. If Chart and ExchangeCalc both need Binance BTC/USDT within 1 second, the second call reads from cache.
+- **Backpressure**: `broadcast::channel` has configurable buffer. Slow consumers get `Lagged` and skip to latest — no memory blowup.
+- **Cancellation**: `tokio::select!` + Rust's `Drop` trait ensures cleanup when widgets close.
+
+This pool handles: all market data WebSocket feeds, REST metadata queries, balance checks, UI-driven queries — anything where latency tolerance is >50ms.
+
+#### Dedicated Sell-Order Thread ("Sell Cannon")
+
+The sell-only polling scenario for arbitrage is **not** a standard request-response loop. The goal is to fire sell order requests at maximum rate **without waiting for responses**, so that the moment a deposit lands on the target exchange, one of the in-flight requests catches it:
+
+```
+Pipelined (what we do):
+  REQ1 ──►
+    REQ2 ──►
+      REQ3 ──►
+        REQ4 ──►
+              RESP1 (insufficient balance — deposit not landed yet)
+              RESP2 (insufficient balance)
+              RESP3 (SUCCESS — deposit landed, order filled!)
+              RESP4 (ignore — already filled)
+
+  All fired within ~1ms. First success at ~30ms.
+  = 4 attempts in the time sequential polling does 1.
+
+Sequential (what we DON'T do):
+  REQ1 → WAIT → RESP1 → REQ2 → WAIT → RESP2 → ...
+  = ~30ms per attempt, deposit may land during the wait gap
+```
+
+This runs on a **dedicated OS thread**, not the tokio async pool, for two reasons:
+
+1. **Isolation**: Market data processing on the async pool cannot interfere. Even if 6 exchanges blast WebSocket updates simultaneously, the sell-order thread is unaffected.
+2. **Zero scheduling overhead**: No tokio scheduler delay between "response received" and "next request fired". The thread runs a tight loop — build request, send, loop.
+
+```
+┌──────────────────────────────────────────────────┐
+│  Sell Cannon Thread (dedicated OS thread)         │
+│                                                  │
+│  loop:                                           │
+│    build_request()       // pre-signed template  │
+│    fire_non_blocking()   // send, don't wait     │
+│    precise_wait(rate_limit_interval)             │
+│                                                  │
+│  ONLY job: send sell orders at max rate.         │
+│  Responses collected separately (async).         │
+└──────────┬───────────────────────────────────────┘
+           │ responses arrive asynchronously
+           ▼
+┌──────────────────────────────────────────────────┐
+│  Response Collector (async task, separate)         │
+│                                                  │
+│  for each response:                              │
+│    if success → signal stop → emit to UI         │
+│    if insufficient_balance → discard (continue)  │
+│    if rate_limited → signal slow down            │
+└──────────────────────────────────────────────────┘
+```
+
+The rate limiter uses **precise timing** to maximize request throughput without triggering 429s. For sub-millisecond precision, spin-wait instead of `thread::sleep`:
+
+```rust
+fn precise_wait(duration: Duration) {
+    let target = Instant::now() + duration;
+    while Instant::now() < target {
+        std::hint::spin_loop(); // CPU hint, keeps core hot
+    }
+}
+```
+
+Burns CPU but guarantees firing at the exact maximum allowed rate.
+
+#### Latency Optimization Checklist
+
+| Factor | Impact | Solution |
+|--------|--------|---------|
+| Connection reuse | ~50-100ms saved (no TCP/TLS handshake) | Pre-established HTTP/2 persistent connection pool per exchange, thread-local for sell cannon |
+| DNS resolution | ~5-20ms if not cached | Pre-resolve and pin exchange API IPs at startup |
+| Request signing | ~0.01ms | Pre-build request templates, only update nonce/timestamp per request |
+| Rate limit budget | 429 = infinite latency | Token bucket: reserve 80% for critical ops, 20% for market data REST fallback |
+| Timer precision | `thread::sleep` has ~1ms jitter | `spin_loop()` for critical thread, tokio timers for everything else |
+| Core affinity (advanced) | Eliminates CPU cache misses from core migration | `core_affinity` crate to pin sell cannon thread to a specific core |
+
+#### Summary: Two Pools
+
+| Pool | Thread Model | Used For | Latency Tolerance |
+|------|-------------|----------|------------------|
+| **Async (tokio)** | ~4 threads, thousands of tasks | Market data, REST queries, balance checks, UI events | >50ms (I/O-bound, waiting on network) |
+| **Critical (OS threads)** | 1 dedicated thread per active sell-cannon | Sell order pipelining, withdrawal execution | <1ms scheduling (must fire at max rate) |
+
 ### Pre-load / Bootstrap Layer
 
 Before widgets become interactive, they need exchange metadata that populates Autocomplete options, fee displays, network selectors, etc. This data is **not** fetched globally on app start — it is **scoped per widget** so that only the widgets the user has open trigger API calls. Widgets that are closed or not yet added to the layout do not load anything.
