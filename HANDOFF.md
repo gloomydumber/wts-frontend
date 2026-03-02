@@ -3328,3 +3328,10 @@ SQLite in WAL mode via `tauri-plugin-sql` for general persistence (layouts, sett
 | `src/components/widgets/CexWidget/index.tsx` | Added `orders: 'Orders'` to `OP_LABELS`, lifted `OrderStatusState` map, render `OrderStatusTab` with state/onChange |
 | `src/components/widgets/CexWidget/tabs/BalanceTab.tsx` | Added ↻ refresh button with refreshKey state, removed Phase 2 planning comments |
 | `src/components/widgets/CexWidget/tabs/OrderTab.tsx` | Removed Phase 2 planning comment (replaced by implementation) |
+
+**Commit:** `5365c29` feat(cex): add Order Status tab + Balance refresh button
+
+**Next steps:**
+- Phase 2: Replace mock data with Tauri `invoke()` calls for orders (REST fetch + cancel) and balances
+- Phase 2+: WebSocket real-time toggle for order status + balance (code comments in `OrderStatusTab.tsx` and `BalanceTab.tsx` detail the per-exchange WS channels)
+- Phase 2: SQLite WAL mode for persistence (replace localStorage)
