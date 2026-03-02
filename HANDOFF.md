@@ -677,8 +677,9 @@ Phase 1 uses mock data and placeholder formulas throughout the frontend. This ta
 | **OrderTab** — Submit | No-op button | Does nothing | Binance `POST /api/v3/order`, Upbit `POST /v1/orders`, etc. | `tabs/OrderTab.tsx` |
 | **OrderTab** — Balances in form | Not shown | No available balance display | Query from balance endpoints, show available balance for selected asset | `tabs/OrderTab.tsx` |
 | **OrderTab** — Sell-Only polling | `pollInterval` field, no actual polling | User sets interval in ms (default 500ms), button starts/cancels loop but no real polling occurs | Implement real polling loop: place sell order → check status → retry at `pollInterval` rate. See "Sell-Only Polling Strategy" section below. | `tabs/OrderTab.tsx` |
-| **OrderTab** — Order status panel | Not implemented | No open order list or fill status | Split Column 2 into order form (top ~60%) + open orders list (bottom ~40%). Show open/partial/filled orders with cancel button. Binance `GET /api/v3/openOrders`, `DELETE /api/v3/order`. Also show pending deposit/withdraw status. | `tabs/OrderTab.tsx` |
-| **BalanceTab** — Refresh button | Not implemented | Balance data is static mock | Add ↻ button right-aligned next to wallet-type tabs. On click: `invoke('get_balances', { exchange, walletType })`. | `tabs/BalanceTab.tsx` |
+| **Column 3** — Order Status tab | Mock data + ↻ refresh | Shows mock open orders (Binance/Upbit have data, others empty). Cancel removes from local list. ↻ re-reads mock data. | Phase 2: `invoke('get_open_orders')` for REST refresh, `DELETE /api/v3/order` for cancel. Phase 2+: WS real-time toggle (see code comment). | `types.ts`, `tabs/OrderStatusTab.tsx` |
+| **OrderStatusTab** — Real-time WS orders | Not implemented | No live order status updates | Opt-in toggle next to ↻: subscribe to exchange private WS for order events (Binance `userDataStream` executionReport, Bybit order topic, Upbit myOrder, OKX orders channel). Reuses shared data bus connection. Off by default. | `tabs/OrderStatusTab.tsx` |
+| **BalanceTab** — Refresh button | Mock ↻ button | ↻ re-renders with same mock data, logs to console | Phase 2: `invoke('get_balances', { exchange, walletType })`. | `tabs/BalanceTab.tsx` |
 | **BalanceTab** — Real-time WS balance | Not implemented | No live balance updates | Opt-in toggle: subscribe to exchange private WS (Binance `userDataStream`, Upbit `myasset`). Reuses same connection as order fill events. Off by default. | `tabs/BalanceTab.tsx` |
 
 **Pattern for replacement:** Each mock currently lives in either `mockData.ts` (shared data) or inline in the tab component (formulas/handlers). In Phase 2:
@@ -3298,28 +3299,32 @@ The cogwheel itself is always clickable. Inside the dialog, the "Wallet" tab is 
 
 **Sibling repo changed:** `crypto-exchange-rate-calculator` — `ExchangeCalc.tsx`, `Calculator.tsx`, `SettingsDialog.tsx`, `package.json` (v0.0.5, already committed + pushed separately)
 
-### 2026-02-28: CEX Widget Phase 2 Planning — Order Status, Balance Refresh, WS Balance
+### 2026-03-02: CEX Widget — Order Status Tab, Balance Refresh Button
 
-Planning notes added as code comments and HANDOFF.md tracker entries. No functional changes.
+Implemented Order Status tab and Balance refresh button (Phase 1 with mock data).
 
-**1. Order Status panel (Phase 2):**
+**1. Order Status tab (Column 3):**
 
-The Order tab lives in Column 2 (flex 3 of the 3-column CEX layout). Currently it contains: Buy/Sell toggle, Limit/Market, Price, Quantity, Sell-Only section, Submit button. Adding order status here requires splitting Column 2 into top ~60% (order form) and bottom ~40% (open orders list).
+New `'orders'` tab — first tab in Column 3 for all exchanges. Follows the same lifted `Record<exchangeId, State>` pattern as Deposit/Withdraw/Transfer/Margin (state in `index.tsx`, passed via `state`/`onChange` props). Table with Pair/Side/Type/Price/Qty/Filled/Status/Cancel columns. Korean convention colors (buy=red, sell=blue). Cancel button removes from lifted state + logs. ↻ refresh button re-reads mock data + logs. Mock data for all 6 exchanges with realistic non-round quantities. Phase 2+ code comment: WebSocket real-time order updates via exchange private WS feeds (Binance userDataStream executionReport, Bybit order topic, Upbit myOrder, OKX orders channel) — opt-in toggle next to ↻, reuses shared data bus, off by default.
 
-Bottom panel: scrollable compact list of open orders for current exchange+pair. Each row: `side | qty | price | filled% | status | [cancel]`. Also shows pending deposits/withdrawals as "pending operations." Code comment added in `OrderTab.tsx`.
+**Compact qty display:** Large quantities show `≈14.3K`, `≈1.18M` etc. (exact for <1K). Click any qty/filled number to copy exact full-precision value to clipboard + log to console. Same hover/highlight pattern as BalanceTab's click-to-copy.
 
-**2. Balance refresh button (Phase 2):**
+**2. Balance refresh button:**
 
-↻ button right-aligned next to the wallet-type tabs (`Spot | Margin Iso | Cross | [↻]`) in BalanceTab. When only one wallet type exists (no tabs shown), refresh button still appears at top-right. Phase 2: `invoke('get_balances', { exchange, walletType })`. Code comment with layout sketch added in `BalanceTab.tsx`.
+↻ button right-aligned next to wallet-type tabs. Shows even when only one wallet type (no tabs). Phase 1: increments refreshKey to force re-render + logs to console. Phase 2: `invoke('get_balances', { exchange, walletType })`.
 
-**3. WebSocket real-time balance (Phase 2+, optional):**
+**3. Phase 2 storage note:**
 
-Opt-in toggle icon next to balance refresh button. When enabled, subscribes to exchange private WS feed (Binance `userDataStream`, Upbit `myasset` WS, Bybit private WS). No extra connection needed — `userDataStream` already carries order fill events, so balance updates come free on the shared data bus. Off by default because it requires API keys with account permissions.
+SQLite in WAL mode via `tauri-plugin-sql` for general persistence (layouts, settings, order history, trade logs). `tauri-plugin-store` for simple key-value. Encrypted keystore for API keys/mnemonics. localStorage is Phase 1 only.
 
 **Files changed:**
 
 | File | Change |
 |------|--------|
-| `HANDOFF.md` | Added 3 rows to Phase 1→2 mock tracker, session log entry |
-| `src/components/widgets/CexWidget/tabs/OrderTab.tsx` | Phase 2 comment: order status panel layout |
-| `src/components/widgets/CexWidget/tabs/BalanceTab.tsx` | Phase 2 comment: refresh button placement + WS balance |
+| `HANDOFF.md` | Updated tracker rows, session log |
+| `src/components/widgets/CexWidget/types.ts` | Added `'orders'` to `OperationTab`, `getAvailableTabs()` pushes it first |
+| `src/components/widgets/CexWidget/mockData.ts` | Added `MockOrder` interface + `mockOpenOrders` with realistic data for all 6 exchanges |
+| `src/components/widgets/CexWidget/tabs/OrderStatusTab.tsx` | **NEW** — Order status table with lifted state, compact qty (≈K/≈M), click-to-copy, cancel, ↻ refresh, WS Phase 2 comment |
+| `src/components/widgets/CexWidget/index.tsx` | Added `orders: 'Orders'` to `OP_LABELS`, lifted `OrderStatusState` map, render `OrderStatusTab` with state/onChange |
+| `src/components/widgets/CexWidget/tabs/BalanceTab.tsx` | Added ↻ refresh button with refreshKey state, removed Phase 2 planning comments |
+| `src/components/widgets/CexWidget/tabs/OrderTab.tsx` | Removed Phase 2 planning comment (replaced by implementation) |

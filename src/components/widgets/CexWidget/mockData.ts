@@ -146,6 +146,44 @@ export const mockPairInfo: Record<string, { base: string; quote: string }> = {
   DOGEUSDT: { base: 'DOGE', quote: 'USDT' },
 }
 
+// --- Open orders mock data ---
+
+export interface MockOrder {
+  orderId: string
+  pair: string
+  side: 'buy' | 'sell'
+  orderType: 'limit' | 'market'
+  price: number
+  quantity: number
+  filled: number
+  status: 'NEW' | 'PARTIALLY_FILLED' | 'FILLED' | 'CANCELED'
+  time: number
+}
+
+export const mockOpenOrders: Record<string, MockOrder[]> = {
+  Binance: [
+    { orderId: '1001', pair: 'BTC/USDT', side: 'sell', orderType: 'limit', price: 98500, quantity: 0.032, filled: 0, status: 'NEW', time: Date.now() - 300000 },
+    { orderId: '1002', pair: 'ETH/USDT', side: 'buy', orderType: 'limit', price: 3200, quantity: 2.4, filled: 1.1, status: 'PARTIALLY_FILLED', time: Date.now() - 120000 },
+  ],
+  Upbit: [
+    { orderId: '2001', pair: 'BTC/KRW', side: 'sell', orderType: 'limit', price: 136500000, quantity: 0.005, filled: 0, status: 'NEW', time: Date.now() - 60000 },
+  ],
+  Bithumb: [
+    { orderId: '3001', pair: 'XRP/KRW', side: 'buy', orderType: 'limit', price: 3400, quantity: 14300, filled: 7850, status: 'PARTIALLY_FILLED', time: Date.now() - 180000 },
+    { orderId: '3002', pair: 'ETH/KRW', side: 'sell', orderType: 'limit', price: 4780000, quantity: 0.73, filled: 0, status: 'NEW', time: Date.now() - 45000 },
+  ],
+  Bybit: [
+    { orderId: '4001', pair: 'SOL/USDT', side: 'buy', orderType: 'limit', price: 172.5, quantity: 2370, filled: 940, status: 'PARTIALLY_FILLED', time: Date.now() - 90000 },
+  ],
+  Coinbase: [
+    { orderId: '5001', pair: 'XRP/USD', side: 'sell', orderType: 'limit', price: 2.48, quantity: 1183000, filled: 0, status: 'NEW', time: Date.now() - 200000 },
+  ],
+  OKX: [
+    { orderId: '6001', pair: 'OKB/USDT', side: 'buy', orderType: 'limit', price: 44.8, quantity: 47600, filled: 11250, status: 'PARTIALLY_FILLED', time: Date.now() - 150000 },
+    { orderId: '6002', pair: 'ETH/USDT', side: 'sell', orderType: 'limit', price: 3500, quantity: 4.15, filled: 0, status: 'NEW', time: Date.now() - 30000 },
+  ],
+}
+
 // ============================================================
 // Pre-load layer mock data
 //

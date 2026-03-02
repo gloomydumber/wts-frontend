@@ -13,6 +13,7 @@ import {
 } from '@mui/material'
 import type { ExchangeConfig } from '../types'
 import { mockWalletBalances, type BalanceRow, type WalletType } from '../mockData'
+import { log } from '../../../../services/logger'
 
 const WALLET_LABELS: Record<WalletType, string> = {
   spot: 'Spot',
@@ -55,6 +56,7 @@ function isMarginTab(tab: WalletType): boolean {
 export default function BalanceTab({ exchange }: { exchange: ExchangeConfig }) {
   const [copiedAsset, setCopiedAsset] = useState<string | null>(null)
   const [walletTab, setWalletTab] = useState<WalletType>('spot')
+  const [refreshKey, setRefreshKey] = useState(0)
 
   const availableTabs = getAvailableWalletTabs(exchange.id)
   const showTabs = availableTabs.length > 1
@@ -75,50 +77,62 @@ export default function BalanceTab({ exchange }: { exchange: ExchangeConfig }) {
 
   const margin = isMarginTab(activeTab)
 
-  // Phase 2: Balance refresh button
-  // Add a ↻ button right-aligned next to the wallet-type tabs (Spot/Margin/etc.).
-  // When clicked: invoke('get_balances', { exchange: exchange.id, walletType: activeTab })
-  // and replace mockWalletBalances data with the response.
-  // When only one wallet type exists (no tabs), still show the refresh button at top-right.
-  // Optional Phase 2+: WebSocket-based real-time balance via userDataStream (Binance),
-  // private WS (Bybit), or myasset WS (Upbit). Opt-in toggle icon next to refresh button.
-  // When enabled, balance updates arrive on the shared data bus — no extra connection needed
-  // since userDataStream already carries order fill events. Off by default.
+  // Suppress unused var lint — refreshKey forces re-render on refresh click
+  void refreshKey
+
+  const handleRefresh = () => {
+    setRefreshKey((k) => k + 1)
+    log({
+      level: 'INFO',
+      category: 'WALLET',
+      source: exchange.id,
+      message: `[${exchange.label}] Balance refreshed`,
+    })
+  }
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      {/* Phase 2: wrap Tabs + refresh button in a flex row:
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Tabs ...>{tabs}</Tabs>
-            <Box sx={{ ml: 'auto', pr: 0.5 }}>
-              <span className="balance-refresh-button" onClick={handleRefresh}>↻</span>
-            </Box>
-          </Box>
-      */}
-      {showTabs && (
-        <Tabs
-          value={activeTab}
-          onChange={(_, v) => setWalletTab(v)}
-          variant="scrollable"
-          scrollButtons={false}
-          sx={{ minHeight: 22 }}
+      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        {showTabs && (
+          <Tabs
+            value={activeTab}
+            onChange={(_, v) => setWalletTab(v)}
+            variant="scrollable"
+            scrollButtons={false}
+            sx={{ minHeight: 22 }}
+          >
+            {availableTabs.map((w) => (
+              <Tab
+                key={w}
+                value={w}
+                label={WALLET_LABELS[w]}
+                sx={{
+                  minHeight: 22,
+                  py: 0,
+                  px: 0.5,
+                  minWidth: 'auto',
+                  fontSize: '0.55rem',
+                }}
+              />
+            ))}
+          </Tabs>
+        )}
+        <Box
+          component="span"
+          onClick={handleRefresh}
+          sx={{
+            ml: 'auto',
+            pr: 0.5,
+            fontSize: '14px',
+            color: 'text.secondary',
+            cursor: 'pointer',
+            userSelect: 'none',
+            '&:hover': { color: 'success.main' },
+          }}
         >
-          {availableTabs.map((w) => (
-            <Tab
-              key={w}
-              value={w}
-              label={WALLET_LABELS[w]}
-              sx={{
-                minHeight: 22,
-                py: 0,
-                px: 0.5,
-                minWidth: 'auto',
-                fontSize: '0.55rem',
-              }}
-            />
-          ))}
-        </Tabs>
-      )}
+          ↻
+        </Box>
+      </Box>
 
       <TableContainer sx={{ flex: 1 }}>
         <Table size="small" stickyHeader>

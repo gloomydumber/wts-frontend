@@ -9,12 +9,14 @@ import DepositTab, { DEFAULT_DEPOSIT_STATE, type DepositState } from './tabs/Dep
 import WithdrawTab, { DEFAULT_WITHDRAW_STATE, type WithdrawState } from './tabs/WithdrawTab'
 import TransferTab, { DEFAULT_TRANSFER_STATE, type TransferState } from './tabs/TransferTab'
 import MarginTab, { DEFAULT_MARGIN_STATE, type MarginState } from './tabs/MarginTab'
+import OrderStatusTab, { getInitialOrderStatusState, type OrderStatusState } from './tabs/OrderStatusTab'
 
 const OP_LABELS: Record<OperationTab, string> = {
   deposit: 'Deposit',
   withdraw: 'Withdraw',
   transfer: 'Transfer',
   margin: 'Margin',
+  orders: 'Orders',
 }
 
 export default function CexWidget() {
@@ -26,6 +28,8 @@ export default function CexWidget() {
   const [withdrawStates, setWithdrawStates] = useState<Record<string, WithdrawState>>({})
   const [transferStates, setTransferStates] = useState<Record<string, TransferState>>({})
   const [marginStates, setMarginStates] = useState<Record<string, MarginState>>({})
+  const [orderStatusStates, setOrderStatusStates] = useState<Record<string, OrderStatusState>>({})
+
 
   const exchange = EXCHANGES[exchangeIdx]
   const availableTabs = getAvailableTabs(exchange)
@@ -42,6 +46,7 @@ export default function CexWidget() {
   const withdrawState = withdrawStates[exchange.id] ?? DEFAULT_WITHDRAW_STATE
   const transferState = transferStates[exchange.id] ?? DEFAULT_TRANSFER_STATE
   const marginState = marginStates[exchange.id] ?? DEFAULT_MARGIN_STATE
+  const orderStatusState = orderStatusStates[exchange.id] ?? getInitialOrderStatusState(exchange.id)
 
   const handleOrderChange = useCallback((update: Partial<OrderState>) => {
     setOrderStates((prev) => {
@@ -74,6 +79,13 @@ export default function CexWidget() {
   const handleMarginChange = useCallback((update: Partial<MarginState>) => {
     setMarginStates((prev) => {
       const current = prev[exchange.id] ?? DEFAULT_MARGIN_STATE
+      return { ...prev, [exchange.id]: { ...current, ...update } }
+    })
+  }, [exchange.id])
+
+  const handleOrderStatusChange = useCallback((update: Partial<OrderStatusState>) => {
+    setOrderStatusStates((prev) => {
+      const current = prev[exchange.id] ?? getInitialOrderStatusState(exchange.id)
       return { ...prev, [exchange.id]: { ...current, ...update } }
     })
   }, [exchange.id])
@@ -140,6 +152,8 @@ export default function CexWidget() {
           onWithdrawChange={handleWithdrawChange}
           onTransferChange={handleTransferChange}
           onMarginChange={handleMarginChange}
+          orderStatusState={orderStatusState}
+          onOrderStatusChange={handleOrderStatusChange}
         />
       )}
     </Box>
@@ -179,8 +193,8 @@ function LoadingView({ exchangeLabel, progress }: {
 // --- Widget body (rendered after metadata is loaded) ---
 
 function WidgetBody({ exchange, metadata, exchangePairs, pair, opTab, availableTabs,
-  orderState, depositState, withdrawState, transferState, marginState,
-  onPairChange, onOpChange, onOrderChange, onDepositChange, onWithdrawChange, onTransferChange, onMarginChange,
+  orderState, depositState, withdrawState, transferState, marginState, orderStatusState,
+  onPairChange, onOpChange, onOrderChange, onDepositChange, onWithdrawChange, onTransferChange, onMarginChange, onOrderStatusChange,
 }: {
   exchange: (typeof EXCHANGES)[number]
   metadata: ExchangeMetadata
@@ -193,6 +207,7 @@ function WidgetBody({ exchange, metadata, exchangePairs, pair, opTab, availableT
   withdrawState: WithdrawState
   transferState: TransferState
   marginState: MarginState
+  orderStatusState: OrderStatusState
   onPairChange: (v: string) => void
   onOpChange: (_: unknown, val: OperationTab) => void
   onOrderChange: (update: Partial<OrderState>) => void
@@ -200,6 +215,7 @@ function WidgetBody({ exchange, metadata, exchangePairs, pair, opTab, availableT
   onWithdrawChange: (update: Partial<WithdrawState>) => void
   onTransferChange: (update: Partial<TransferState>) => void
   onMarginChange: (update: Partial<MarginState>) => void
+  onOrderStatusChange: (update: Partial<OrderStatusState>) => void
 }) {
   return (
     <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
@@ -273,6 +289,7 @@ function WidgetBody({ exchange, metadata, exchangePairs, pair, opTab, availableT
           {opTab === 'withdraw' && <WithdrawTab exchange={exchange} metadata={metadata} state={withdrawState} onChange={onWithdrawChange} />}
           {opTab === 'transfer' && <TransferTab exchange={exchange} metadata={metadata} state={transferState} onChange={onTransferChange} />}
           {opTab === 'margin' && <MarginTab exchange={exchange} metadata={metadata} state={marginState} onChange={onMarginChange} />}
+          {opTab === 'orders' && <OrderStatusTab exchange={exchange} pair={pair} state={orderStatusState} onChange={onOrderStatusChange} />}
         </Box>
       </Box>
     </Box>

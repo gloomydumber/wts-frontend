@@ -88,11 +88,12 @@ export const EXCHANGES: ExchangeConfig[] = [
 ]
 
 // Balance and Order are always-visible dedicated panels (not tabs)
-// Deposit, Withdraw, Transfer, Margin are tabbed in the third column
-export type OperationTab = 'deposit' | 'withdraw' | 'transfer' | 'margin'
+// Deposit, Withdraw, Transfer, Margin, Orders are tabbed in the third column
+export type OperationTab = 'deposit' | 'withdraw' | 'transfer' | 'margin' | 'orders'
 
 export function getAvailableTabs(exchange: ExchangeConfig): OperationTab[] {
   const tabs: OperationTab[] = []
+  if (exchange.features.order) tabs.push('orders')
   if (exchange.features.deposit) tabs.push('deposit')
   if (exchange.features.withdraw) tabs.push('withdraw')
   if (exchange.features.transfer.length > 0) tabs.push('transfer')
