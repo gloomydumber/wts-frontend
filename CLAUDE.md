@@ -1,6 +1,7 @@
 # WTS Frontend
 
 Read HANDOFF.md at session start. Update HANDOFF.md before session close with what was done.
+Related docs (read only when relevant): HANDOFF-PHASE2.md (Tauri/Rust backend plans), HANDOFF-SESSIONS.md (past session logs).
 
 ## Build & Dev
 
