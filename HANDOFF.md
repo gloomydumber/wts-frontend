@@ -696,6 +696,17 @@ Exchange WSs ──→ Rust (tokio) ──→ Tauri Event ──→ React State 
   (5+ feeds)     (aggregation)     (emit)          (update)       (render)
 ```
 
+### CRITICAL: No Silent Failures on External Calls
+
+**Every** external call — REST API requests, WebSocket connections, reconnections, message parsing — **must not silently fail.** Phase 1 uses mock data so this doesn't apply yet, but in Phase 2 when real exchange APIs are connected:
+
+- **Log every failure** via the centralized logger (`log()` with level `ERROR` or `WARN`, category matching the operation). The user must see it in ConsoleWidget.
+- **Alert the user** — failed order submissions, dropped WebSocket feeds, authentication errors, rate limit hits, and network timeouts must produce visible UI feedback (toast/snackbar or inline error state), not just a console log entry.
+- **No `catch { /* ignore */ }` patterns** — every catch block must log context (which exchange, which endpoint, what was attempted, the error message). Silent swallowing of errors in a trading system can cause missed orders, stale data, or undetected account issues.
+- **WebSocket disconnects** must be logged with reconnection status. If reconnection fails after retries, escalate to a persistent UI warning (e.g., "Binance WS disconnected" banner).
+
+This applies to both Rust-side (Tauri commands, WS manager) and frontend-side (fetch calls, Tauri `invoke()` error handling, `listen()` subscription errors).
+
 ### Key Rust Crates
 
 | Crate | Purpose |
