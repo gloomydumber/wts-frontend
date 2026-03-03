@@ -594,6 +594,67 @@ When Tauri is added later, these methods become thin wrappers around `invoke()` 
 
 ---
 
+## Phase 1 WebSocket Architecture
+
+### Current State: Widget-Scoped Connections
+
+Each widget independently owns its own WebSocket connection(s). No connection sharing or subscription aggregation exists:
+
+| Widget | Connection(s) | Subscription Content |
+|--------|--------------|---------------------|
+| ChartWidget | 1 WS to selected exchange | OHLCV kline for selected pair |
+| PremiumTable | 2 WS (Upbit + Binance) | Ticker prices for all listed common pairs |
+| OrderbookWidget | 1 WS to selected exchange | Depth (orderbook) for selected pair |
+
+Even when Chart and Orderbook both select Binance BTCUSDT, that's **2 separate TCP connections** to the same Binance endpoint with different subscription topics. Each widget manages its own connect/disconnect/reconnect lifecycle independently.
+
+### Why React-Side WebSockets Are Correct for Phase 1
+
+**Connection count is not a problem.** 3-4 total connections is well within exchange per-IP limits (Binance allows 5 WS connections per endpoint). Even in Phase 2, if the connection count stays in this range, consolidation (merging multiple connections to the same exchange into one) is not necessary purely for connection management reasons.
+
+**The high message volume concern — not a bottleneck.** PremiumTable and Orderbook receive hundreds of messages/sec from Binance. But `JSON.parse` handles small ticker/depth frames in <0.1ms. The actual bottleneck is **React rendering**, which both packages already solved:
+- premium-table: RAF-batched flush, adaptive throttle (32-100ms on slow devices), `React.memo` + inline `style`
+- orderbook: RAF-batched flush, `maxQty` power-of-2 quantization, `overflow: hidden` clipping
+
+Moving WS to Rust would not reduce React render cost — the same data still needs to reach the UI at the same frequency. The only saving would be one fewer `JSON.parse` per frame if Rust pre-parses, which is negligible.
+
+**Building a JS connection manager is wasted effort** — Rust replaces it in Phase 2 anyway.
+
+### I/O Bound vs CPU Bound
+
+| Work | Nature | JS Adequate? | Rust Advantage |
+|------|--------|-------------|----------------|
+| WS connect/subscribe/heartbeat | I/O bound | Yes | No meaningful difference |
+| JSON parse of WS frames | CPU (light) | Yes (<0.1ms per frame) | `serde` ~10x faster, but irrelevant at this frame size |
+| Display rendering | CPU (React) | Bottleneck here, not WS | Same — still must push data to UI |
+| Orderbook diff → full book rebuild | CPU (medium) | Works | Sorted merge + sequence validation is more natural in Rust |
+| Cross-exchange computation (arbitrage) | CPU (medium) | Possible but blocks UI thread | Should not run in React |
+| Rate-limited order placement | I/O + timing | JS event loop jitter 4-15ms | tokio sub-ms precision |
+| Subscription aggregation/dedup | Logic | Would need custom manager | Single process tracks all widget needs |
+
+### When Rust-Side WS Becomes Necessary (Phase 2)
+
+Rust-side WebSocket handling is driven by **security and computation needs**, not by JS being too slow for the message volume:
+
+1. **Authenticated private streams** — `userDataStream` (Binance), `myOrder` (Upbit), order/balance feeds require API key signing. Keys must never touch JavaScript. This alone mandates Rust-side WS for any private data.
+2. **Sell cannon timing** — Sub-10ms reaction to market data requires Rust. JS event loop cannot guarantee this.
+3. **Cross-widget computation** — Arbitrage detection, aggregated best bid/ask across exchanges — CPU work that should not block the UI thread.
+4. **Connection consolidation (at scale)** — Only becomes necessary if widget/exchange count grows beyond exchange per-IP limits. At 3-4 connections, not needed.
+
+### Migration Path (Phase 1 → Phase 2)
+
+Widgets receive data through typed interfaces, so migration is a data source swap:
+
+1. Rust owns WS connections (one per exchange if consolidating, or per-widget if count is low)
+2. Rust parses and normalizes frames into typed structs
+3. Tauri events push to React: `app.emit("orderbook:binance:btcusdt", data)`
+4. React widgets `listen()` — zero connection management code
+5. Widget components unchanged — only the data source hook swaps from `useWebSocket()` to `listen()`
+
+See [Shared Data Bus](#shared-data-bus-market-data-runtime--tokio) in Phase 2 for the full target architecture.
+
+---
+
 ## Phase 2: Tauri + Rust Backend (Future)
 
 After frontend PoC is validated, wrap with Tauri.
@@ -648,13 +709,166 @@ Exchange WSs ──→ Rust (tokio) ──→ Tauri Event ──→ React State 
 | `aes-gcm` | Key encryption |
 | `tauri` | Desktop app framework |
 
-### Security
+### Security Architecture
 
-- API keys / private keys encrypted with AES-256 in Rust
-- Master password unlock
-- Private keys never touch JavaScript
-- HMAC signing in Rust
-- React only sends intent ("buy 0.1 BTC on Binance")
+#### Design Principle: Utility First, Minimum Security Guaranteed
+
+WTS prioritizes **speed of reaction to market incidents** over defense-in-depth. Traders need to act in seconds, not type passwords per action. But the app handles significant assets (CEX accounts with withdrawal access, DEX private keys that ARE the funds), so a minimum security floor is non-negotiable.
+
+#### What Needs Protection
+
+| Secret | Risk if Leaked | Used By |
+|--------|---------------|---------|
+| CEX API keys (6 exchanges) | Full account access (trade, withdraw) | CexWidget — every tab |
+| CEX API secrets | Request signing | CexWidget — every API call |
+| CEX passphrases (OKX, Coinbase) | Additional auth factor | CexWidget — API calls |
+| DEX mnemonic(s) | **Total loss of all wallets** | DexWidget — signing |
+| DEX private keys (derived) | Loss of that account | DexWidget — per-tx signing |
+
+#### Phase 1: No Security Layer (Intentional)
+
+Phase 1 has no real secrets — CEX keys are mock, DEX mnemonic is a dev-only wallet with no real funds. Building encryption in Phase 1 means:
+- Encrypting/decrypting mock data (pointless)
+- Typing a password every dev launch (annoying)
+- Web Crypto encryption that Rust replaces entirely in Phase 2 (throwaway code)
+- "Security" is fake anyway — JS DevTools can inspect everything in localStorage
+
+**Phase 1 prep (not throwaway):** Define the CEX API key data model in `types.ts` — the shape of what gets stored per exchange (`apiKey`, `secret`, `passphrase`, `permissions`, `label`). This carries directly into the Phase 2 vault structure.
+
+#### Phase 2: Master Password + Encrypted Vault
+
+**Login flow:**
+
+```
+App launch → Login screen (master password)
+                │
+                ▼
+         PBKDF2/Argon2 → AES-256 encryption key
+                │
+                ▼
+         Decrypt vault (Rust-side only)
+                │
+                ├── CEX API keys loaded into Rust memory
+                │   → CexWidget gets "authenticated" status per exchange
+                │   → All tabs functional immediately
+                │
+                └── DEX mnemonics loaded into Rust memory
+                    → Wallets derived, addresses available
+                    → Signing happens in Rust on demand
+                │
+                ▼
+         Trading session (no more password prompts)
+                │
+         Lock on: manual lock / inactivity timeout / app close
+```
+
+**Core rules:**
+
+1. **Unlock once, trade freely** — zero per-action password prompts. Speed is the priority once authenticated.
+2. **Secrets never reach JavaScript** — Rust decrypts, Rust signs, React only sends intent ("buy 0.1 BTC on Binance").
+3. **Generous inactivity timeout** — trading sessions are long. Default 60min, configurable. Not 5min like a banking app.
+4. **No per-action re-auth by default** — optional re-auth for withdrawals over a threshold (configurable, disableable).
+
+**Vault file on disk:**
+
+```
+%APPDATA%/wts/vault.enc    ← AES-256-GCM encrypted blob
+%APPDATA%/wts/vault.meta   ← unencrypted: salt, KDF params,
+                              exchange labels (for login screen display)
+```
+
+Portable — user can back up the vault file. Tauri filesystem access makes this trivial.
+
+**Vault contents (encrypted):**
+
+```
+EncryptedVault
+├── cex_keys/
+│   ├── upbit:    { api_key, secret, label, permissions }
+│   ├── binance:  { api_key, secret, label, permissions }
+│   ├── bithumb:  { api_key, secret, label, permissions }
+│   ├── bybit:    { api_key, secret, label, permissions }
+│   ├── coinbase: { api_key, secret, passphrase, label, permissions }
+│   └── okx:      { api_key, secret, passphrase, label, permissions }
+├── dex_wallets/
+│   ├── wallet_1: { label, mnemonic }
+│   ├── wallet_2: { label, mnemonic }
+│   └── ...
+└── metadata (unencrypted in vault.meta)
+    ├── salt
+    ├── kdf_params
+    └── exchange_labels (for display before unlock)
+```
+
+**Login screen UI:**
+
+```
+┌─────────────────────────────────────┐
+│           WTS — Login               │
+│                                     │
+│   Master Password: [••••••••••]     │
+│                                     │
+│   [Unlock]                          │
+│                                     │
+│   Exchanges configured:             │
+│   ✓ Upbit  ✓ Binance  ✓ Bybit     │
+│   ✓ Bithumb  ○ Coinbase  ✓ OKX    │
+│   DEX Wallets: 2                    │
+│                                     │
+│   [Setup] [Forgot Password?]        │
+└─────────────────────────────────────┘
+```
+
+Exchange labels and wallet count read from unencrypted `vault.meta` — visible before unlock so the user knows what's configured.
+
+#### Setup Wizard (First-Run Only)
+
+Separate from the login page. Runs once on fresh install:
+
+```
+[1] Create master password (strength meter, confirm)
+[2] Add CEX API keys (per exchange, with permission guidance)
+    - Guide user to create API keys with appropriate scopes
+    - Validate key format per exchange before saving
+[3] Create or import DEX wallet (mnemonic)
+[4] All encrypted → vault file created
+[5] Future launches → login page only
+```
+
+Separates the "configure secrets" UX from the "daily trading" UX.
+
+#### Tiered API Key Permissions (Optional Enhancement)
+
+Most exchanges allow creating API keys with limited scope. WTS could support two key tiers per exchange:
+
+| Tier | Permissions | Used When |
+|------|------------|-----------|
+| Trading key | Trade + Read (no withdraw) | Default — orders, balances, market data |
+| Full key | Trade + Read + Withdraw | Only when WithdrawTab is active |
+
+Limits blast radius if application memory is somehow dumped — the trading key cannot steal funds.
+
+#### Emergency Kill Switch
+
+Panic button (hotkey) that immediately:
+- Cancels all open orders across all exchanges
+- Stops the sell cannon if running
+- Disconnects all WebSockets
+- Optionally locks the app (re-requires master password)
+
+Not encryption-related, but critical for the "react to market incidents fast" requirement.
+
+#### Rust Crates for Security
+
+| Crate | Purpose |
+|-------|---------|
+| `aes-gcm` | AES-256-GCM vault encryption |
+| `argon2` or `pbkdf2` | Key derivation from master password |
+| `hmac` + `sha2` | CEX API request signing |
+| `k256` | secp256k1 signing (EVM chains) |
+| `ed25519-dalek` | Ed25519 signing (Solana) |
+| `zeroize` | Securely wipe secrets from memory on lock |
+| `tauri-plugin-stronghold` | Alternative: IOTA Stronghold encrypted storage (evaluate vs custom vault) |
 
 ### Phase 1 Mock → Phase 2 API Replacement Tracker
 
