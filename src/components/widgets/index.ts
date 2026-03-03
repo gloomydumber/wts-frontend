@@ -9,6 +9,7 @@ import ExchangeCalcWidget from './ExchangeCalcWidget'
 import DexWidget from './DexWidget'
 import MemoWidget from './MemoWidget'
 import ShortcutWidget from './ShortcutWidget'
+import TotpWidget from './TotpWidget'
 
 // Component map — keyed by layout item ID
 export const widgetComponents: Record<string, ComponentType> = {
@@ -21,4 +22,5 @@ export const widgetComponents: Record<string, ComponentType> = {
   Dex: DexWidget,
   Memo: MemoWidget,
   Shortcut: ShortcutWidget,
+  Totp: TotpWidget,
 }

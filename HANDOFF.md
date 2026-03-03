@@ -33,6 +33,7 @@ Widgets should be designed with clear data interfaces (TypeScript types for prop
 - [x] MemoWidget — persistent user notes (localStorage)
 - [x] ShortcutWidget — quick links to exchange trading pages by ticker
 - [x] ChartWidget — TradingView Advanced Chart embed (free widget, full charting) + Lightweight Charts tab (6 exchange kline REST APIs)
+- [x] TotpWidget — TOTP 2FA code generator (zero npm deps, Web Crypto HMAC-SHA1)
 
 ### Widget Behavior (Port from `rgl-practice`)
 
@@ -794,6 +795,10 @@ EncryptedVault
 │   ├── wallet_1: { label, mnemonic }
 │   ├── wallet_2: { label, mnemonic }
 │   └── ...
+├── totp_entries/
+│   ├── { label: "Binance", secret: "<base32>", digits: 6, period: 30 }
+│   ├── { label: "Upbit", secret: "<base32>", digits: 6, period: 30 }
+│   └── ...
 └── metadata (unencrypted in vault.meta)
     ├── salt
     ├── kdf_params
@@ -869,6 +874,140 @@ Not encryption-related, but critical for the "react to market incidents fast" re
 | `ed25519-dalek` | Ed25519 signing (Solana) |
 | `zeroize` | Securely wipe secrets from memory on lock |
 | `tauri-plugin-stronghold` | Alternative: IOTA Stronghold encrypted storage (evaluate vs custom vault) |
+
+#### Unified Backup / Restore (One-Click)
+
+All secrets — CEX API keys, DEX wallets (mnemonics), and TOTP entries — must be exportable as a single encrypted file and importable on another device with one click.
+
+**In Phase 2**, the vault file (`vault.enc`) IS the backup. Copy to USB/cloud → drop on another machine → enter master password → everything restored. No special export flow needed.
+
+**In Phase 1**, a dedicated Export/Import feature is needed because secrets live in separate localStorage atoms. Unlike the login page (skipped for Phase 1), backup/restore has real utility now — DEX mnemonics are real wallets, TOTP secrets are real 2FA keys.
+
+**Phase 1 implementation:**
+
+```
+[Export] button (AppBar or Settings)
+  → password prompt
+  → gather: dexWalletsAtom + totpEntriesAtom (+ future cexKeysAtom)
+  → AES-256-GCM encrypt (Web Crypto — reuse walletManager.ts)
+  → download as .wts file
+
+[Import] button
+  → file picker (.wts)
+  → password prompt
+  → decrypt → write to localStorage atoms
+  → app reloads with all data restored
+```
+
+**File format (`.wts`):**
+
+```json
+{
+  "version": 1,
+  "format": "wts-backup",
+  "created": "2026-03-02T12:00:00Z",
+  "salt": "<base64>",
+  "iv": "<base64>",
+  "ciphertext": "<base64, AES-256-GCM encrypted payload>"
+}
+```
+
+Decrypted payload mirrors the vault schema:
+
+```json
+{
+  "cex_keys": {
+    "upbit":   { "apiKey": "...", "secret": "...", "label": "main" },
+    "binance": { "apiKey": "...", "secret": "...", "label": "trading" }
+  },
+  "dex_wallets": [
+    { "label": "Wallet 1", "mnemonic": "abandon ability ...", "excludedIndices": [] }
+  ],
+  "totp_entries": [
+    { "label": "Binance", "secret": "JBSWY3DPEHPK3PXP", "digits": 6, "period": 30 }
+  ]
+}
+```
+
+**Phase 2 migration:** Export/Import buttons call Tauri `invoke('export_vault')` / `invoke('import_vault')` instead of Web Crypto. Same `.wts` file format, same UX. Rust-side encryption replaces JS-side.
+
+### TotpWidget — TOTP 2FA Code Generator
+
+#### Rationale
+
+Crypto exchanges require 2FA for withdrawals, API key creation, and security changes. A desktop TOTP generator eliminates phone switching during time-critical trading. This is a utility widget — speed of access over security theater (the secret is already on this device).
+
+Reference: [Authy Desktop](https://authy.com/), [totp.danhersam.com](https://totp.danhersam.com/)
+
+#### Architecture
+
+```
+TotpWidget/
+├── index.tsx       # Entry list, add/edit/delete, click-to-copy
+├── totp.ts         # Pure TOTP computation (Web Crypto, 0 npm deps)
+└── types.ts        # TotpEntry type, state shape
+```
+
+**Zero npm dependencies.** TOTP (RFC 6238) is ~50 lines:
+- Base32 decode: ~15 lines
+- HMAC-SHA1: `crypto.subtle.sign('HMAC', key, data)` (Web Crypto built-in)
+- Dynamic truncation → 6-digit code: ~10 lines
+
+#### Data Model
+
+```typescript
+interface TotpEntry {
+  id: string           // nanoid or crypto.randomUUID()
+  label: string        // "Binance", "Upbit", etc.
+  secret: string       // base32-encoded secret from exchange QR
+  digits: 6 | 8        // code length (default 6)
+  period: 30 | 60      // seconds (default 30)
+  algorithm: 'SHA-1'   // standard, extensible to SHA-256/SHA-512
+}
+```
+
+Storage: `atomWithStorage<TotpEntry[]>('totpEntries', [])` — localStorage Phase 1, vault Phase 2.
+
+**Security note:** TOTP secrets in localStorage are as sensitive as API keys — anyone with the secret can generate valid 2FA codes indefinitely. Same Phase 1 stance as DEX mnemonic. Phase 2: moves into `vault.enc`.
+
+#### Timer Strategy (Performance)
+
+All TOTP entries share the same 30-second wall-clock cycle (`Math.floor(Date.now() / 1000 / 30)`). One timer drives everything:
+
+- **1 Hz `setInterval`** updates the countdown display (seconds remaining + progress bar)
+- **TOTP recomputation** happens only when the 30s boundary crosses — not per second
+- **Isolated countdown component** (`TotpCountdown`) owns the timer state — parent does not re-render per second
+- **Inline `style={}`** for progress bar width — no Emotion style leak
+
+Impact: negligible. PremiumTable handles hundreds of WS messages/sec. A 1Hz countdown is nothing.
+
+#### UX
+
+```
+┌─ TOTP ──────────────────────────────────┐
+│  Binance       482 193     ████░░  12s  │
+│  Upbit         739 015     ████░░  12s  │
+│  OKX           294 857     ████░░  12s  │
+│                                          │
+│  [+ Add]                                 │
+└──────────────────────────────────────────┘
+```
+
+- Click code → copy to clipboard + 1s lime flash + log to ConsoleWidget
+- All entries show same countdown (shared 30s cycle)
+- Add: dialog with Label + Secret (paste from exchange 2FA setup page)
+- Edit/Delete: icon buttons per row (pencil, trash)
+- Secret input: password-masked, toggle visibility
+- Entries ordered by label alphabetically, or drag-to-reorder
+
+#### Widget Config
+
+```typescript
+// in defaults.ts WIDGET_REGISTRY
+{ id: 'Totp', label: 'TOTP', defaultVisible: false, group: 'utilities' }
+```
+
+Not visible by default — user enables via Drawer when they need it.
 
 ### Phase 1 Mock → Phase 2 API Replacement Tracker
 
@@ -1274,6 +1413,8 @@ Steps 1–3 are **already implemented** in Phase 1 with mock data:
 | ~~20~~ | ~~Workspace save/load profiles~~ | 1 | REMOVED — not needed |
 | 21 | AppBar + Drawer (port from rgl-practice) | 1 | DONE |
 | 22 | **Build ExchangeWidget** (merged: order, deposit, withdraw, transfer, margin) | 1 | DONE |
+| 23 | Build TotpWidget (TOTP 2FA generator, zero deps) | 1 | DONE |
+| 24 | Unified backup/restore (Export/Import .wts file) | 1 | TODO |
 | 12–18 | Tauri integration, Rust backend, DEX, more exchanges | 2–3+ | OUT OF SCOPE — will be done in a separate Tauri project |
 
 ---
@@ -3549,3 +3690,86 @@ SQLite in WAL mode via `tauri-plugin-sql` for general persistence (layouts, sett
 - Phase 2: Replace mock data with Tauri `invoke()` calls for orders (REST fetch + cancel) and balances
 - Phase 2+: WebSocket real-time toggle for order status + balance (code comments in `OrderStatusTab.tsx` and `BalanceTab.tsx` detail the per-exchange WS channels)
 - Phase 2: SQLite WAL mode for persistence (replace localStorage)
+
+### 2026-03-02: Phase 1 WebSocket Architecture + Security Architecture Documentation
+
+**Goal:** Document architectural decisions for WebSocket handling and security layer.
+
+**What was done:**
+
+1. **Phase 1 WebSocket Architecture section** — New top-level section between Exchange Abstraction and Phase 2. Documents:
+   - Current widget-scoped connection inventory (4 connections across 3 widgets: Chart 1, PremiumTable 2, Orderbook 1)
+   - Why React-side WS is correct for Phase 1 (low connection count, rendering is the bottleneck not JSON parsing, JS connection manager would be throwaway)
+   - I/O bound vs CPU bound analysis table (WS connect, JSON parse, display rendering, orderbook rebuilds, arbitrage computation, order placement, subscription dedup)
+   - Key conclusion: even in Phase 2, connection consolidation is not needed at 3-4 connections — Rust-side WS is driven by security (authenticated private streams), timing (sell cannon), and computation (cross-exchange arbitrage), not message volume
+   - Migration path from `useWebSocket()` to Tauri `listen()`
+
+2. **Security Architecture section** — Replaced the old 5-line stub under Phase 2 with full architecture:
+   - Design principle: utility (speed) first, minimum security guaranteed
+   - What needs protection: CEX API keys/secrets/passphrases, DEX mnemonics/private keys
+   - Phase 1: no security layer (intentional) — mock data, no real secrets, Web Crypto would be throwaway. Only prep: CEX API key data model in `types.ts`
+   - Phase 2: master password + encrypted vault — single login, PBKDF2/Argon2 → AES-256 key, Rust-side decryption only, 60min inactivity timeout, no per-action re-auth
+   - Vault file structure (`vault.enc` + `vault.meta`) with full schema
+   - Login screen UI mockup
+   - Setup wizard (first-run only) — separate from daily login flow
+   - Tiered API key permissions (trading-only vs full keys)
+   - Emergency kill switch (panic button: cancel all orders, stop sell cannon, disconnect WS, lock app)
+   - Rust crates: `aes-gcm`, `argon2`, `hmac`+`sha2`, `k256`, `ed25519-dalek`, `zeroize`, `tauri-plugin-stronghold`
+
+**Files changed:**
+
+| File | Change |
+|------|--------|
+| `HANDOFF.md` | +220 lines: Phase 1 WS architecture section, security architecture section (replaced 6-line stub) |
+
+**Commit:** `6b0a924` docs: add Phase 1 WebSocket architecture and security architecture sections
+
+### 2026-03-03: TotpWidget — TOTP 2FA Code Generator
+
+**Goal:** Implement a desktop TOTP widget so traders can copy 2FA codes directly from the trading interface without switching to a phone authenticator.
+
+**What was done:**
+
+1. **`totp.ts`** — Pure TOTP computation module (RFC 6238 / RFC 4226). `base32Decode` (RFC 4648), `generateTOTP` (Web Crypto HMAC-SHA1, async), `getTimeRemaining`. Zero npm dependencies. `secretBytes.buffer as ArrayBuffer` cast needed for TS 5.9 strict `BufferSource` typing.
+
+2. **`types.ts`** — `TotpEntry` (id, label, secret, digits 6|8, period 30|60) and `TotpCode` interfaces.
+
+3. **`index.tsx`** — Full widget component:
+   - `TotpRow` memo component owns the 1Hz `setInterval` (FundingCountdown pattern). Renders label, code, progress bar, seconds, and action icons as a single isolated unit — prevents parent re-renders from the timer.
+   - Code text turns `#FF0000` when remaining ≤ 5s (urgent), matches progress bar and seconds color. Copy flash is `#00FF00`.
+   - Click code → `navigator.clipboard.writeText` + 1s lime flash + console log with actual code value.
+   - Epoch-based code recomputation: parent tracks `epoch = Math.floor(Date.now() / 1000 / 30)` via 1Hz interval; codes recompute only at 30s boundaries via `useEffect` dependency on `epoch`.
+   - Add/Edit MUI Dialog: label, base32 secret (password field + visibility toggle), digits (6/8 toggle), period (30s/60s toggle). Base32 validation on save.
+   - Delete confirmation dialog with stable `deleteLabel` state (prevents text flash during MUI Dialog exit animation — the label was going null before the dialog finished closing).
+   - Empty state centered vertically + horizontally.
+   - Edit (pencil) and delete (trash) icons visible on row hover, both lime colored, with left margin from countdown.
+   - Progress bar: no transition animation (instant width change at 0s boundary).
+
+4. **Widget registration** — Standard 3-file pattern:
+   - `atoms.ts`: `totpEntriesAtom = atomWithStorage<TotpEntry[]>('totpEntries', [])` with Phase 2 vault migration comment
+   - `widgets/index.ts`: `Totp: TotpWidget`
+   - `defaults.ts`: `{ id: 'Totp', label: 'TOTP', group: 'utilities', defaultVisible: false }`
+   - `Drawer.tsx`: `PasswordTwoTone` icon
+
+**Design decisions:**
+- **No backup/export yet** — TOTP secrets in unencrypted localStorage (Phase 1 stance, same as DEX mnemonics). Phase 2 migrates to encrypted vault. Backup/restore plan documented in HANDOFF.md "Unified Backup / Restore" section; noted in `atoms.ts` comment.
+- **`TotpRow` vs `TotpCountdown`** — Originally had a separate `TotpCountdown` memo component, but the code text needed to know `remaining` for urgent red coloring. Refactored into `TotpRow` that owns both code display and countdown, keeping the 1Hz re-render isolated.
+- **`deleteLabel` state vs ref** — React 19 lint rule (`react-hooks/set-state-in-effect`) forbids ref reads during render. Used a separate `deleteLabel` state that only updates when opening the dialog (not when clearing `deleteTarget`), keeping the text stable during exit animation.
+
+**Files changed:**
+
+| File | Change |
+|------|--------|
+| `src/components/widgets/TotpWidget/totp.ts` | **NEW** — Pure TOTP computation (base32, HMAC-SHA1, dynamic truncation) |
+| `src/components/widgets/TotpWidget/types.ts` | **NEW** — TotpEntry, TotpCode interfaces |
+| `src/components/widgets/TotpWidget/index.tsx` | **NEW** — Widget with TotpRow memo, add/edit/delete dialogs, copy-to-clipboard, console logging |
+| `src/store/atoms.ts` | Added `totpEntriesAtom` with Phase 2 migration comment |
+| `src/components/widgets/index.ts` | Registered `Totp: TotpWidget` |
+| `src/layout/defaults.ts` | Added TOTP to `WIDGET_REGISTRY` |
+| `src/presenter/Drawer.tsx` | Added `PasswordTwoTone` icon |
+| `HANDOFF.md` | Marked TotpWidget done in roadmap + tracker, session log |
+
+**Next steps:**
+- Phase 1: Implement unified Export/Import backup (`.wts` file, AES-256-GCM) — see HANDOFF.md "Unified Backup / Restore"
+- Phase 2: Migrate `totpEntriesAtom` from localStorage to encrypted vault (`vault.enc`)
+- Verify TOTP output against RFC 6238 test vector: secret `JBSWY3DPEHPK3PXP` at https://totp.danhersam.com/

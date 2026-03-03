@@ -3,6 +3,7 @@ import { atomWithStorage } from 'jotai/utils'
 import type { Layouts } from 'react-grid-layout'
 import { defaultLayouts, WIDGET_REGISTRY } from '../layout/defaults'
 import type { DexWalletsState, DexSettings } from '../components/widgets/DexWidget/types'
+import type { TotpEntry } from '../components/widgets/TotpWidget/types'
 
 // Layout state — persisted to localStorage
 export const layoutsAtom = atomWithStorage<Layouts>('layouts', defaultLayouts)
@@ -47,3 +48,9 @@ export const dexSettingsAtom = atomWithStorage<DexSettings>('dexSettings', {
   defaultSlippageBps: 50,
   gasPriority: 'medium',
 })
+
+// TOTP entries — persisted to localStorage (UNENCRYPTED)
+// Phase 2: migrate to Tauri encrypted vault (vault.enc). Secrets in localStorage
+// are as sensitive as API keys — anyone with access can generate valid 2FA codes.
+// See HANDOFF.md "Unified Backup / Restore" for the .wts export/import plan.
+export const totpEntriesAtom = atomWithStorage<TotpEntry[]>('totpEntries', [])

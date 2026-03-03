@@ -15,6 +15,7 @@ export const WIDGET_REGISTRY: WidgetConfig[] = [
   // Utilities
   { id: 'Memo', label: 'Memo', group: 'utilities', defaultVisible: false },
   { id: 'Shortcut', label: 'Shortcut', group: 'utilities', defaultVisible: false },
+  { id: 'Totp', label: 'TOTP', group: 'utilities', defaultVisible: false },
 ]
 
 // Lookup helpers
