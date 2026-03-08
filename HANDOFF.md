@@ -34,6 +34,17 @@ Widgets should be designed with clear data interfaces (TypeScript types for prop
 - [x] ShortcutWidget — quick links to exchange trading pages by ticker
 - [x] ChartWidget — TradingView Advanced Chart embed (free widget, full charting) + Lightweight Charts tab (6 exchange kline REST APIs)
 - [x] TotpWidget — TOTP 2FA code generator (zero npm deps, Web Crypto HMAC-SHA1)
+- [ ] SnsWidget — real-time SNS feed (Twitter/X API). Paid API — requires X API Pro/Enterprise plan for streaming. Displays filtered tweets by keyword/account for market-moving news
+- [ ] NotificationWidget — strong notification system (telephone calling, SMS, Telegram). Escalating alert chain: Telegram → SMS → phone call spam until acknowledged. Like AWS SNS but for personal trading alerts (price triggers, order fills, system failures)
+- [ ] TrollBoxWidget — real-time chat widget. Channel-based: global channel (all WTS users) + private channels (invite-only). Requires WebSocket backend (Phase 2). Think Bitmex trollbox / Discord-lite embedded in the trading UI
+- [ ] PortfolioWidget — unified cross-exchange/cross-chain P&L tracker with allocation breakdown and value history chart
+- [ ] HeatmapWidget — treemap market visualization (size=market cap, color=24h change). Click tile to focus Chart/Orderbook
+- [ ] CalendarWidget — crypto event calendar (token unlocks, macro events, listings, fork dates, options expiry)
+- [ ] ScreenerWidget — market scanner with multi-criteria filtering (volume, change%, funding, RSI, new listings)
+- [ ] FundingWidget — perpetual funding rate dashboard across exchanges with annualized APR and countdown
+- [ ] LiquidationWidget — aggregated liquidation level map showing long/short cluster magnets
+- [ ] OnchainWidget — whale movements, exchange inflow/outflow, stablecoin supply, active addresses
+- [ ] MacroWidget — macro dashboard (DXY, 10Y yield, Fear & Greed, BTC dominance, ETF flows)
 
 ### Widget Behavior (Port from `rgl-practice`)
 
@@ -669,8 +680,6 @@ See [Shared Data Bus](./HANDOFF-PHASE2.md#shared-data-bus-market-data-runtime--t
 - One-click arbitrage execution
 - Unified orderbook (best bid/ask across all exchanges)
 - Workspace profiles (save/load different layouts)
-- Console/logging widget
-- Twitter/social feed widget
 
 ---
 
@@ -778,6 +787,1175 @@ ExchangeWidget/
 ```
 
 Sub-tabs are conditionally rendered based on `ExchangeConfig.features`. Switching exchange automatically resets pair and operation tab if current ones are unavailable.
+
+---
+
+## Widget Specifications
+
+Phase 1 specs for all planned widgets. Each section covers architecture, data model, Phase 1 implementation, UX, and widget config. Phase 2 enhancements are in [HANDOFF-PHASE2.md](./HANDOFF-PHASE2.md).
+
+### TotpWidget — TOTP 2FA Code Generator
+
+#### Rationale
+
+Crypto exchanges require 2FA for withdrawals, API key creation, and security changes. A desktop TOTP generator eliminates phone switching during time-critical trading. This is a utility widget — speed of access over security theater (the secret is already on this device).
+
+Reference: [Authy Desktop](https://authy.com/), [totp.danhersam.com](https://totp.danhersam.com/)
+
+#### Architecture
+
+```
+TotpWidget/
+├── index.tsx       # Entry list, add/edit/delete, click-to-copy
+├── totp.ts         # Pure TOTP computation (Web Crypto, 0 npm deps)
+└── types.ts        # TotpEntry type, state shape
+```
+
+**Zero npm dependencies.** TOTP (RFC 6238) is ~50 lines:
+- Base32 decode: ~15 lines
+- HMAC-SHA1: `crypto.subtle.sign('HMAC', key, data)` (Web Crypto built-in)
+- Dynamic truncation → 6-digit code: ~10 lines
+
+#### Data Model
+
+```typescript
+interface TotpEntry {
+  id: string           // nanoid or crypto.randomUUID()
+  label: string        // "Binance", "Upbit", etc.
+  secret: string       // base32-encoded secret from exchange QR
+  digits: 6 | 8        // code length (default 6)
+  period: 30 | 60      // seconds (default 30)
+  algorithm: 'SHA-1'   // standard, extensible to SHA-256/SHA-512
+}
+```
+
+Storage: `atomWithStorage<TotpEntry[]>('totpEntries', [])` — localStorage Phase 1, vault Phase 2.
+
+**Security note:** TOTP secrets in localStorage are as sensitive as API keys — anyone with the secret can generate valid 2FA codes indefinitely. Same Phase 1 stance as DEX mnemonic. Phase 2: moves into `vault.enc`.
+
+#### Timer Strategy (Performance)
+
+All TOTP entries share the same 30-second wall-clock cycle (`Math.floor(Date.now() / 1000 / 30)`). One timer drives everything:
+
+- **1 Hz `setInterval`** updates the countdown display (seconds remaining + progress bar)
+- **TOTP recomputation** happens only when the 30s boundary crosses — not per second
+- **Isolated countdown component** (`TotpCountdown`) owns the timer state — parent does not re-render per second
+- **Inline `style={}`** for progress bar width — no Emotion style leak
+
+Impact: negligible. PremiumTable handles hundreds of WS messages/sec. A 1Hz countdown is nothing.
+
+#### UX
+
+```
+┌─ TOTP ──────────────────────────────────┐
+│  Binance       482 193     ████░░  12s  │
+│  Upbit         739 015     ████░░  12s  │
+│  OKX           294 857     ████░░  12s  │
+│                                          │
+│  [+ Add]                                 │
+└──────────────────────────────────────────┘
+```
+
+- Click code → copy to clipboard + 1s lime flash + log to ConsoleWidget
+- All entries show same countdown (shared 30s cycle)
+- Add: dialog with Label + Secret (paste from exchange 2FA setup page)
+- Edit/Delete: icon buttons per row (pencil, trash)
+- Secret input: password-masked, toggle visibility
+- Entries ordered by label alphabetically, or drag-to-reorder
+
+#### Widget Config
+
+```typescript
+// in defaults.ts WIDGET_REGISTRY
+{ id: 'Totp', label: 'TOTP', defaultVisible: false, group: 'utilities' }
+```
+
+Not visible by default — user enables via Drawer when they need it.
+
+---
+
+### SnsWidget — Real-Time SNS Feed (Twitter/X)
+
+#### Rationale
+
+Market-moving news hits Twitter/X before any other channel. Traders who see a tweet 30 seconds earlier can react before the price moves. An embedded feed eliminates alt-tabbing to a browser.
+
+#### API & Cost
+
+| Plan | Price | Streaming | Search | Rate Limit |
+|------|-------|-----------|--------|------------|
+| X API Free | $0 | No | No | 1,500 tweets/month write-only |
+| X API Basic | $100/mo | No | Yes (limited) | 10k reads/month |
+| X API Pro | $5,000/mo | **Yes** (filtered stream) | Yes (full archive) | 1M reads/month |
+| X API Enterprise | Custom | Yes (full firehose) | Yes | Custom |
+
+**Filtered Stream (Pro+)** is the target — rules like `from:caborek OR from:WuBlockchain OR #BTC` push matching tweets in real-time over a persistent HTTP connection. Basic tier only supports polling via search endpoint (15 req/15min), which adds 30-60s latency.
+
+**Alternative (cheaper):** Scraping/unofficial APIs (Nitter-style) — unreliable, breaks frequently. Not recommended for a trading tool.
+
+#### Architecture
+
+```
+SnsWidget/
+├── index.tsx       # Feed display, filter controls, keyword/account management
+├── types.ts        # Tweet type, filter config, stream rule
+└── mockData.ts     # Sample tweets for Phase 1
+```
+
+**Phase 1:** Mock feed with sample tweets. Filter UI (keyword, account list) functional but no real API.
+
+#### UX
+
+```
+┌─ SNS Feed ─────────────────────────────────────────────┐
+│  Filters: [@WuBlockchain] [@caborek] [#BTC] [+ Add]   │
+│                                                         │
+│  @WuBlockchain · 2s ago                                │
+│  Binance will list $TOKEN at 14:00 UTC                 │
+│                                                         │
+│  @caborek · 45s ago                                    │
+│  Breaking: SEC delays ETF decision to Q3               │
+│                                                         │
+│  @whale_alert · 1m ago                                 │
+│  🚨 50,000 BTC transferred from Coinbase to unknown    │
+│                                                         │
+│  [Show more...]                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+- Tweet rows: avatar (optional), handle, relative timestamp, text, media preview (optional)
+- Click-to-copy tweet text, click handle to open profile
+- Keyword highlighting in tweet body
+- Optional: sound/visual alert on tweets matching high-priority keywords
+
+#### Widget Config
+
+```typescript
+{ id: 'Sns', label: 'SNS Feed', group: 'utilities', defaultVisible: false, hasSettings: true }
+```
+
+Settings: API key input, filter rules, alert keywords, refresh interval (Basic tier polling), max buffer size.
+
+---
+
+### NotificationWidget — Strong Notification / Alert System
+
+#### Rationale
+
+Price alerts that only show a browser notification are useless when sleeping. Traders need **escalating, unavoidable alerts** — the kind that wake you up at 3 AM when BTC drops 10% or a sell order fills. Like AWS SNS but personal: Telegram first, then SMS, then phone call spam until acknowledged.
+
+#### Alert Channels (Escalation Chain)
+
+```
+Trigger event (price cross, order fill, system failure)
+    │
+    ▼
+[1] Telegram Bot message          ← instant, free, always-on
+    │ (no ack within 30s)
+    ▼
+[2] SMS via Twilio / AWS SNS      ← $0.0075/msg, reliable
+    │ (no ack within 2min)
+    ▼
+[3] Phone call via Twilio          ← $0.013/min, loud
+    │ (no answer)
+    ▼
+[4] Repeat call every 60s         ← spam until answered
+    until acknowledged or max retries (configurable, default 5)
+```
+
+**Acknowledgment:** Telegram reply, SMS reply, answering the call + pressing a digit, or clicking "Dismiss" in the widget UI.
+
+#### Service Costs
+
+| Service | Cost | Setup |
+|---------|------|-------|
+| Telegram Bot API | Free | Create bot via @BotFather, user sends `/start` |
+| Twilio SMS | ~$0.0075/msg + $1/mo phone number | Account + verified number |
+| Twilio Voice | ~$0.013/min + $1/mo phone number | Same account, TwiML for call script |
+| AWS SNS (alternative) | $0.00645/SMS, $0.013/min voice | AWS account, IAM config |
+
+**Telegram is the primary channel** — free, instant, rich formatting (can include charts/screenshots). SMS and phone calls are escalation-only for critical alerts.
+
+#### Architecture
+
+```
+NotificationWidget/
+├── index.tsx       # Alert rule list, status dashboard, test buttons
+├── types.ts        # AlertRule, AlertChannel, EscalationConfig
+├── mockData.ts     # Sample alert rules and history
+└── channels/       # Phase 2: channel adapters
+    ├── telegram.ts
+    ├── twilio.ts
+    └── types.ts
+```
+
+**Phase 1:** Alert rule UI (create/edit/delete rules, set conditions, choose channels). No actual notifications — mock "sent" status. Test button simulates the escalation chain in ConsoleWidget logs.
+
+#### Alert Rule Types
+
+| Trigger | Condition | Example |
+|---------|-----------|---------|
+| Price cross | `>`, `<`, `>=`, `<=` threshold | BTC/USDT > 100,000 |
+| Price change % | `±N%` in time window | ETH drops 5% in 1h |
+| Order fill | Any order fills on any exchange | Sell 0.5 BTC filled on Binance |
+| Order partial fill | Partial fill above threshold | >50% of order filled |
+| Balance change | Balance increases/decreases by amount | Deposit landed (balance +1 BTC) |
+| System failure | WS disconnect, API error, rate limit | Binance WS disconnected >30s |
+| Sell cannon complete | Sell-only loop succeeds or max retries | Sell filled after 847 attempts |
+| Custom (Phase 2+) | Lua/JS expression against any data | `premium("BTCUSDT") > 3.0` |
+
+#### UX
+
+```
+┌─ Notification ──────────────────────────────────────────┐
+│  Alert Rules                                    [+ Add] │
+│                                                          │
+│  ● BTC > 100K    [TG] [SMS] [Call]    Active    [Edit]  │
+│  ● ETH -5% / 1h  [TG] [SMS]          Active    [Edit]  │
+│  ○ Order Fill     [TG]                Paused    [Edit]  │
+│                                                          │
+│  Recent Alerts                                           │
+│  12:34:02  BTC > 100K triggered                         │
+│    → Telegram sent ✓  SMS sent ✓  Call: answered ✓      │
+│  09:15:44  ETH -5% triggered                            │
+│    → Telegram sent ✓  Ack'd via Telegram reply          │
+│                                                          │
+│  Channels: [Telegram ✓] [Twilio ✓]      [Test Alert]   │
+└──────────────────────────────────────────────────────────┘
+```
+
+- Green dot = active rule, grey = paused
+- Channel badges show which channels are configured for each rule
+- "Test Alert" button fires a test through the full escalation chain
+- Recent alerts section shows delivery status per channel
+
+#### Widget Config
+
+```typescript
+{ id: 'Notification', label: 'Notification', group: 'system', defaultVisible: false, hasSettings: true }
+```
+
+Settings: Telegram bot token + chat ID, Twilio credentials (SID, auth token, phone numbers), escalation timing (wait before escalate), max call retries, quiet hours (optional — skip phone calls between 00:00-07:00 unless "critical" flag).
+
+#### Security Note
+
+Telegram bot tokens and Twilio credentials are secrets — Phase 2 vault (`vault.enc`). Phase 1 stores in localStorage (same stance as CEX API keys and DEX mnemonic).
+
+---
+
+### TrollBoxWidget — Real-Time Chat
+
+#### Rationale
+
+BitMEX trollbox was legendary — real-time trader chat alongside the trading UI. Social context matters: "is anyone else seeing this spread?" or "Binance withdrawals are stuck" is information you can't get from price charts. A global channel plus private channels covers both public discussion and private team coordination.
+
+#### Architecture
+
+```
+TrollBoxWidget/
+├── index.tsx       # Chat UI, channel tabs, message input
+├── types.ts        # ChatMessage, Channel, UserProfile
+└── mockData.ts     # Sample messages for Phase 1
+```
+
+**Phase 1:** Mock chat with sample messages. Message input works (appends locally). No real networking.
+
+#### Channel Types
+
+| Channel | Access | Purpose |
+|---------|--------|---------|
+| `#general` | All WTS users | Global trollbox, market discussion |
+| `#alerts` | All WTS users | Automated: system-wide announcements, exchange outages |
+| `#<exchange>` | All WTS users | Per-exchange discussion (e.g., `#binance`, `#upbit`) |
+| Private channel | Invite-only | Team/friend coordination, strategy discussion |
+| DM | 1:1 | Direct messages between users |
+
+#### UX
+
+```
+┌─ TrollBox ──────────────────────────────────────────────┐
+│  [#general] [#binance] [Team Alpha]           [+ Join]  │
+│                                                          │
+│  CryptoKing · 12:34:02                                  │
+│  anyone seeing the BTC spread on upbit?                  │
+│                                                          │
+│  degen_trader · 12:34:15                                │
+│  yeah 2.3% premium, about to close                      │
+│                                                          │
+│  whale_watcher · 12:34:28                               │
+│  binance withdrawals slow today, heads up                │
+│                                                          │
+│  ┌─────────────────────────────────────────────┐ [Send] │
+│  │ Type a message...                           │        │
+│  └─────────────────────────────────────────────┘        │
+│  3 online                                                │
+└──────────────────────────────────────────────────────────┘
+```
+
+- Channel tabs at top, scrollable if many
+- Messages: username, timestamp, text. Optional: user badges (admin, mod)
+- Online count per channel
+- Message input with Enter to send
+- Right-click message: copy, reply, report
+- Typing indicator ("degen_trader is typing...")
+- Notifications: unread badge on channel tabs, optional sound
+
+#### Widget Config
+
+```typescript
+{ id: 'TrollBox', label: 'TrollBox', group: 'utilities', defaultVisible: false }
+```
+
+#### Identity
+
+Phase 1: local-only username (localStorage). Phase 2: tied to vault identity or anonymous handle. No real authentication needed — trollbox is casual, not a banking app.
+
+---
+
+### PortfolioWidget — Unified Cross-Exchange P&L Tracker
+
+#### Rationale (`Bloomberg: PORT`)
+
+CexWidget's BalanceTab shows per-exchange balances. DexWidget's BalanceTab shows per-chain token balances. But there's no single view answering "what is my total exposure, how am I doing overall, and where is my capital allocated?" This is the screen traders check first every morning.
+
+#### Architecture
+
+```
+PortfolioWidget/
+├── index.tsx         # Main view: summary bar, holdings table, allocation chart
+├── types.ts          # Position, PortfolioSnapshot, CostBasis, P&L types
+├── mockData.ts       # Sample holdings across exchanges + chains
+├── calculations.ts   # P&L computation, aggregation, currency conversion
+└── tabs/
+    ├── HoldingsTab.tsx     # Aggregated holdings table (grouped by asset)
+    ├── AllocationTab.tsx   # Pie/donut charts (by asset, by exchange, by chain)
+    └── HistoryTab.tsx      # Portfolio value over time (line chart)
+```
+
+#### Data Model
+
+```typescript
+interface Position {
+  asset: string              // "BTC", "ETH", "USDT"
+  source: string             // "binance", "upbit", "ethereum-wallet-1"
+  sourceType: 'cex' | 'dex'
+  amount: number             // total holdings
+  avgEntryPrice?: number     // cost basis (manual Phase 1, auto Phase 2)
+  currentPrice: number       // live price in USD
+  value: number              // amount * currentPrice
+  pnl: number                // unrealized P&L in USD
+  pnlPercent: number         // unrealized P&L %
+}
+
+interface PortfolioSummary {
+  totalValue: number         // sum of all positions in USD
+  totalPnl: number           // sum of all unrealized P&L
+  totalPnlPercent: number    // weighted P&L %
+  dayChange: number          // 24h change in USD
+  dayChangePercent: number   // 24h change %
+}
+```
+
+#### Phase 1 Implementation
+
+- **Mock positions** across Binance, Upbit, Bybit + 2 DEX wallets — static `mockData.ts`
+- **Summary bar** at top: total portfolio value, 24h change, total unrealized P&L
+- **Holdings table**: grouped by asset (all BTC across exchanges summed), expandable to see per-source breakdown
+  - Columns: Asset, Amount, Avg Entry, Current Price, Value (USD/KRW), P&L, P&L %, 24h Change
+  - Sortable by any column
+  - Click row to expand per-source detail
+- **Cost basis**: manual entry dialog per position (Phase 1). Stores in localStorage.
+- **Allocation tab**: donut charts using lightweight canvas/SVG (no heavy charting lib)
+  - By asset (BTC 45%, ETH 30%, SOL 10%, stables 15%)
+  - By venue (Binance 60%, Upbit 25%, DEX wallets 15%)
+  - By chain (for DEX: Ethereum 70%, Solana 20%, Arbitrum 10%)
+- **History tab**: mock sparkline of portfolio value over 30 days
+- **Currency toggle**: USD / KRW display (using ExchangeCalcWidget's rate or mock)
+- **Export**: CSV download of current holdings snapshot
+
+#### UX
+
+```
+┌─ Portfolio ──────────────────────────────────────────────────────┐
+│  Total: $127,450.23 (+$3,241.50 / +2.61% today)                │
+│  Unrealized P&L: +$12,830.00 (+11.2%)                          │
+│                                                                  │
+│  [Holdings] [Allocation] [History]                               │
+│                                                                  │
+│  Asset    Amount      Entry    Current   Value       P&L     %  │
+│  ▼ BTC    1.2500      $64,200  $97,250   $121,562  +$41,312 +51%│
+│    ├ Binance  0.8000                      $77,800                │
+│    ├ Upbit    0.3000                      $29,175                │
+│    └ DEX      0.1500                      $14,587                │
+│  ▶ ETH    5.0000      $3,100   $3,412    $17,060   +$1,560  +10%│
+│  ▶ SOL    50.000      $120     $142      $7,100    +$1,100  +18%│
+│                                                                  │
+│  [Export CSV]                                        [USD ▼]    │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+#### Widget Config
+
+```typescript
+{ id: 'Portfolio', label: 'Portfolio', group: 'system', defaultVisible: false, hasSettings: true }
+```
+
+Settings: cost basis entry, currency preference, included/excluded exchanges, refresh interval.
+
+---
+
+### HeatmapWidget — Market Treemap Visualization
+
+#### Rationale (`Bloomberg: IMAP`)
+
+A treemap gives instant visual scan of the entire market in one glance — rectangle size = market cap, color = performance. You spot the 15% mover in 1 second vs scrolling a 200-row table. Finviz popularized this for equities; crypto needs the same.
+
+#### Architecture
+
+```
+HeatmapWidget/
+├── index.tsx       # Canvas/SVG treemap renderer, controls, tooltip
+├── types.ts        # CoinTile, HeatmapConfig, grouping types
+├── mockData.ts     # Top 100 coins with market cap, 24h change, sector
+├── treemap.ts      # Squarified treemap layout algorithm
+└── sectors.ts      # Sector/category definitions and coin mapping
+```
+
+#### Treemap Layout Algorithm
+
+Squarified treemap (Bruls, Huizing, van Wijk 2000) — produces rectangles with aspect ratios close to 1 (squares), maximizing readability. Implementation is ~80 lines of pure TypeScript, no library needed.
+
+Input: `{ label, value (area), color }[]` + container `{ width, height }`
+Output: `{ label, x, y, w, h, color }[]`
+
+Render via `<canvas>` for performance (hundreds of tiles) or SVG for interactivity. Canvas preferred — single DOM element, no reflow. Overlay a transparent div for mouse events (hit-test by coordinates).
+
+#### Data Sources
+
+| Source | Cost | Coverage | Update Frequency |
+|--------|------|----------|-----------------|
+| CoinGecko `/coins/markets` | Free (30 req/min) | Top 250+ | Every 60s |
+| CoinMarketCap `/v1/cryptocurrency/listings/latest` | Free (333 req/day) | Top 200+ | Every 60s |
+| Binance `/api/v3/ticker/24hr` | Free | Binance-listed only | Real-time |
+
+CoinGecko free tier is sufficient for Phase 1 (top 100 coins, 1-minute refresh). Phase 2: cache in Rust backend, reduce redundant calls.
+
+#### Phase 1 Implementation
+
+- **Mock data**: top 50 coins with realistic market cap, 24h change %, sector tags
+- **Treemap renderer**: canvas-based squarified layout
+- **Color mapping**: green (positive) to red (negative), intensity by magnitude
+  - `> +5%` → deep green, `+2-5%` → medium green, `0-2%` → light green
+  - `< -5%` → deep red, `-2 to -5%` → medium red, `-2 to 0%` → light red
+- **Grouping**: sector-based (L1, L2, DeFi, AI, Meme, Stablecoin, Exchange Token)
+  - Group header text inside the largest tile of each sector
+- **Tooltip on hover**: coin name, price, market cap, 24h change, 7d change, volume
+- **Click tile**: log to ConsoleWidget ("Focused BTC/USDT"). Phase 2: update ChartWidget symbol + OrderbookWidget pair.
+- **Time range selector**: 1h, 4h, 24h, 7d (changes which price change colors the tiles)
+- **Size by**: market cap (default), volume, or equal-weight toggle
+
+#### UX
+
+```
+┌─ Heatmap ────────────────────────────────────────────────┐
+│  [1h] [4h] [24h] [7d]     Size: [MCap ▼]   Group: [Sector ▼] │
+│  ┌──────────────────────────────────────────────────────┐│
+│  │ ┌─────────────┐┌────────┐┌──────┐┌────┐┌───┐┌──┐  ││
+│  │ │             ││        ││      ││    ││   ││  │  ││
+│  │ │   BTC       ││  ETH   ││ SOL  ││BNB ││XRP││..│  ││
+│  │ │  +2.3%      ││ +4.1%  ││-1.2% ││+0.8││   ││  │  ││
+│  │ │             ││        ││      ││    ││   ││  │  ││
+│  │ ├─────────────┤├────────┤├──────┤├────┤├───┤├──┤  ││
+│  │ │  DOGE +12%  ││ADA     ││AVAX  ││DOT ││...│     ││
+│  │ │             ││ -0.5%  ││+3.2% ││    ││   │     ││
+│  │ └─────────────┘└────────┘└──────┘└────┘└───┘     ││
+│  └──────────────────────────────────────────────────────┘│
+└──────────────────────────────────────────────────────────┘
+```
+
+#### Widget Config
+
+```typescript
+{ id: 'Heatmap', label: 'Heatmap', group: 'market', defaultVisible: false, hasSettings: true }
+```
+
+Settings: data source, coin count (top 50/100/200), default time range, sector grouping on/off, custom sector overrides.
+
+---
+
+### CalendarWidget — Crypto Event Calendar
+
+#### Rationale (`Bloomberg: ECO / EVTS`)
+
+Half of crypto trading is event-driven. Token unlocks dump price. FOMC meetings move the entire market. Exchange listings pump. If you don't know what's coming, you're trading blind. Bloomberg's ECO calendar is a core screen — crypto needs the same, but covering crypto-specific events alongside macro.
+
+#### Architecture
+
+```
+CalendarWidget/
+├── index.tsx         # Calendar view (month/week/day), event list, filters
+├── types.ts          # CalendarEvent, EventCategory, ImpactLevel
+├── mockData.ts       # 30+ sample events across all categories
+└── tabs/
+    ├── MonthView.tsx     # Month grid with event dots
+    ├── WeekView.tsx      # Week timeline with event blocks
+    └── UpcomingTab.tsx    # Sorted list of next N events (default view)
+```
+
+#### Event Categories
+
+| Category | Icon | Color | Data Source (Phase 2) | Impact |
+|----------|------|-------|----------------------|--------|
+| **Token Unlock** | Lock-open | Red | TokenUnlocks.app API ($49/mo) or free scraping | Supply shock, usually bearish |
+| **FOMC / Fed** | Bank | Orange | Fed calendar (free, static) | Moves entire market |
+| **CPI / NFP / GDP** | Chart-bar | Orange | BLS.gov / investing.com | Macro volatility |
+| **Exchange Listing** | Plus-circle | Green | Exchange announcement APIs / RSS | Pump on listing |
+| **Fork / Upgrade** | Git-branch | Blue | GitHub release APIs (free) | Volatility around event |
+| **Governance Vote** | Vote | Purple | Snapshot API (free) / Tally | Protocol direction |
+| **Options/Futures Expiry** | Clock | Yellow | Deribit API (free) / Binance Futures | Quarterly vol spike |
+| **Launchpad / IDO** | Rocket | Green | Exchange APIs | Capital rotation |
+| **Airdrop** | Gift | Green | Community-sourced, manual entry | Farming activity |
+| **Conference / Summit** | Calendar | Grey | Manual entry | Narrative shifts |
+| **Custom** | User-defined | User-defined | Manual entry | User-defined |
+
+#### Data Model
+
+```typescript
+interface CalendarEvent {
+  id: string
+  title: string                // "Arbitrum 1.1B ARB unlock"
+  category: EventCategory
+  impact: 'high' | 'medium' | 'low'
+  datetime: string             // ISO 8601
+  allDay: boolean              // true for date-only events
+  asset?: string               // "ARB", "BTC" — if asset-specific
+  source?: string              // "tokenunlocks.app", "manual"
+  description?: string         // Details, links
+  url?: string                 // Reference link
+  amount?: string              // "1.1B ARB ($1.2B)" for unlocks
+  notificationRuleId?: string  // Link to NotificationWidget alert
+}
+```
+
+#### Phase 1 Implementation
+
+- **Mock events**: 30+ realistic events spanning 2 months across all categories
+- **Upcoming view** (default): sorted list of next events, grouped by day
+  - Each row: time, category icon, title, impact badge (colored dot), asset tag
+  - Expandable: click to show description, amount, source link
+  - Past events greyed out, strikethrough
+- **Month view**: standard calendar grid, event dots on dates (colored by category)
+  - Click date to see that day's events in a sidebar list
+- **Week view**: timeline blocks per day, stacked events
+- **Filters**: toggle categories on/off, impact level filter, asset filter (e.g., "show only BTC events")
+- **Manual event creation**: "Add Event" dialog with all fields
+  - Saved to localStorage (`calendarEventsAtom`)
+  - User can add personal reminders alongside data-sourced events
+- **Countdown**: events within 24h show relative countdown ("in 3h 42m")
+- **NotificationWidget integration** (Phase 1 prep): "Set Alert" button on each event creates a rule in NotificationWidget (if implemented). Phase 1: logs to ConsoleWidget instead.
+
+#### UX
+
+```
+┌─ Calendar ───────────────────────────────────────────────┐
+│  [Upcoming] [Week] [Month]          [+ Add] [Filters ▼] │
+│                                                          │
+│  TODAY — Mar 8                                           │
+│  14:00  🔓 ARB unlock 1.1B ($1.2B)          ⚠ HIGH     │
+│         in 1h 26m                                        │
+│  20:00  📊 US NFP Release                    ⚠ HIGH     │
+│         in 7h 26m                                        │
+│                                                          │
+│  TOMORROW — Mar 9                                        │
+│  09:00  🔀 Ethereum Pectra upgrade testnet   ℹ MED      │
+│  16:00  📋 MakerDAO governance vote ends     ℹ MED      │
+│                                                          │
+│  Mar 12                                                  │
+│  All day  📊 US CPI Release (Feb)            ⚠ HIGH     │
+│  12:00  🚀 Binance Launchpool: $TOKEN        ℹ LOW      │
+│                                                          │
+│  Mar 14                                                  │
+│  08:00  ⏰ BTC options expiry ($6.2B OI)     ⚠ HIGH     │
+└──────────────────────────────────────────────────────────┘
+```
+
+#### Widget Config
+
+```typescript
+{ id: 'Calendar', label: 'Calendar', group: 'utilities', defaultVisible: false, hasSettings: true }
+```
+
+Settings: enabled categories, default view (upcoming/week/month), data sources (Phase 2), auto-refresh interval, timezone.
+
+---
+
+### ScreenerWidget — Multi-Criteria Market Scanner
+
+#### Rationale (`Bloomberg: EQS`)
+
+Finding trades is the bottleneck, not executing them. A screener filters the entire crypto market by arbitrary criteria and surfaces actionable opportunities. Bloomberg's EQS is how equity traders find stocks; this is the crypto equivalent.
+
+#### Architecture
+
+```
+ScreenerWidget/
+├── index.tsx         # Filter builder, results table, saved screens
+├── types.ts          # FilterCriteria, ScreenerResult, Preset
+├── mockData.ts       # 100+ coins with all filterable fields populated
+├── filters.ts        # Filter evaluation engine (client-side)
+└── presets.ts        # Built-in screener presets
+```
+
+#### Filterable Fields
+
+| Field | Type | Source (Phase 2) |
+|-------|------|-----------------|
+| Price (USD) | Number | CoinGecko / exchange |
+| Market Cap | Number | CoinGecko |
+| 24h Volume | Number | CoinGecko / exchange |
+| Volume Spike | % (vs 7d avg) | Computed |
+| Price Change 1h / 4h / 24h / 7d | % | CoinGecko |
+| Funding Rate (perps) | % | Binance/Bybit/OKX |
+| Open Interest | USD | CoinGlass / exchange |
+| Premium (KR vs global) | % | PremiumTable data |
+| RSI (14) | Number (0-100) | Computed from kline |
+| Days Since Listed | Number | Exchange listing date |
+| Sector | Category | Manual mapping |
+| Exchange Count | Number | CoinGecko |
+| ATH Distance | % from ATH | CoinGecko |
+
+#### Filter Operators
+
+```typescript
+type FilterOp = '>' | '<' | '>=' | '<=' | '=' | '!=' | 'between' | 'in' | 'not_in'
+
+interface FilterCriteria {
+  field: string         // "priceChange24h"
+  operator: FilterOp    // ">"
+  value: number | string | [number, number]  // 5 or [10, 50]
+}
+```
+
+Multiple filters combined with AND logic. Each filter row has field dropdown, operator dropdown, value input.
+
+#### Built-in Presets
+
+| Preset | Filters | Use Case |
+|--------|---------|----------|
+| **Volume Breakout** | Volume spike > 300%, 24h change > 5% | Momentum entries |
+| **Oversold Bounce** | RSI < 30, 24h change < -10%, MCap > $100M | Mean reversion |
+| **New Listings** | Days since listed < 7, volume > $1M | Early listing plays |
+| **Funding Arb** | Funding rate > 0.05% or < -0.03% | Delta-neutral yield |
+| **KR Premium** | Premium > 2% or < -2% | Cross-exchange arb |
+| **High OI + Low Volume** | OI > $50M, volume/OI ratio < 0.3 | Squeeze setup |
+| **Dip Screener** | 24h change < -15%, MCap > $500M | Large-cap dips |
+
+#### Phase 1 Implementation
+
+- **Mock data**: 100 coins with all fields populated (realistic ranges)
+- **Filter builder**: add/remove filter rows, dropdowns for field/operator, typed value input
+- **Results table**: sortable columns, paginated (20 per page)
+  - Columns shown based on active filters + always: rank, name, price, 24h change, MCap, volume
+  - Click row: log to ConsoleWidget. Phase 2: cross-widget navigation.
+- **Presets**: built-in presets as one-click buttons above the filter builder
+- **Save custom screens**: name + filter set saved to localStorage
+- **Auto-refresh toggle**: re-evaluate filters every N seconds (mock: re-render with same data)
+- **Results count badge**: "23 / 100 coins match"
+- **Mini sparkline**: 7d price chart in each row (tiny inline canvas, ~40x15px)
+
+#### UX
+
+```
+┌─ Screener ───────────────────────────────────────────────────────┐
+│  Presets: [Volume Breakout] [Oversold] [New Listings] [Funding]  │
+│                                                                   │
+│  Filters:                                                [+ Add] │
+│  [24h Change ▼] [> ▼] [5    ]  [×]                              │
+│  [Volume    ▼] [> ▼] [1000000] [×]                              │
+│  [MCap      ▼] [> ▼] [50000000] [×]                             │
+│                                                                   │
+│  23 matches                              [Save Screen] [⟳ Auto]  │
+│                                                                   │
+│  #  Name    Price      24h     MCap        Volume      7d        │
+│  1  DOGE    $0.142    +12.3%  $18.2B      $2.1B       ╱╲╱╲     │
+│  2  PEPE    $0.00001  +8.7%   $4.1B       $890M       ╱╱╲╱     │
+│  3  WIF     $2.34     +7.2%   $2.3B       $340M       ╲╱╱╲     │
+│  ...                                                              │
+│                                           [1] [2] [3] [Next >]  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+#### Widget Config
+
+```typescript
+{ id: 'Screener', label: 'Screener', group: 'market', defaultVisible: false, hasSettings: true }
+```
+
+Settings: data source, coin universe (top 100/200/500/all), default columns, refresh interval, saved screens management.
+
+---
+
+### FundingWidget — Perpetual Funding Rate Dashboard
+
+#### Rationale (`Bloomberg: FWCM`)
+
+Perpetual futures funding rates are a direct arbitrage opportunity — short the perp at high positive funding + long spot = risk-free yield (delta-neutral). This is the most reliable "free money" strategy in crypto. A dashboard showing funding rates across exchanges surfaces these opportunities instantly.
+
+#### Architecture
+
+```
+FundingWidget/
+├── index.tsx         # Main table, countdown, filters
+├── types.ts          # FundingRate, FundingHistory, FundingArb
+├── mockData.ts       # Funding rates for top 30 perps across 4 exchanges
+└── tabs/
+    ├── CurrentTab.tsx    # Live funding rates table (default)
+    ├── HistoryTab.tsx    # Historical funding chart per pair
+    └── ArbTab.tsx        # Cross-exchange funding arbitrage opportunities
+```
+
+#### Data Model
+
+```typescript
+interface FundingRate {
+  exchange: string        // "binance", "bybit", "okx"
+  pair: string            // "BTCUSDT"
+  rate: number            // 0.0100 = 0.01%
+  annualized: number      // rate * 3 * 365 = ~10.95%
+  nextFundingTime: number // unix timestamp
+  markPrice: number
+  indexPrice: number
+  openInterest: number    // USD
+}
+
+interface FundingArb {
+  pair: string
+  longExchange: string    // exchange with lowest funding
+  shortExchange: string   // exchange with highest funding
+  spread: number          // rate difference
+  annualizedYield: number // spread * 3 * 365
+}
+```
+
+#### Phase 1 Implementation
+
+- **Mock data**: 30 perpetual pairs across Binance, Bybit, OKX, with realistic funding rates
+- **Current tab** (default):
+  - Table: Pair, Binance Rate, Bybit Rate, OKX Rate, Average, Annualized APR
+  - Color coding: positive = green (pay shorts), negative = red (pay longs), extreme (>0.05%) = highlighted
+  - Sort by: rate (highest first), annualized, pair name
+  - Countdown timer to next funding (shared across all pairs — 8h cycle, same for all exchanges)
+  - Filter: pair search, min rate threshold, exchange toggle
+- **History tab**:
+  - Select pair → line chart of historical funding rate over 7d/30d
+  - Mock: 30 days of hourly funding data (3 data points per day × 30 = 90 points)
+  - Average line overlay
+  - Cumulative funding line (total earned/paid if holding position)
+- **Arb tab**:
+  - Table of cross-exchange funding spread opportunities
+  - Columns: Pair, Long On (lowest rate exchange), Short On (highest rate), Spread, Ann. Yield
+  - Sorted by yield descending
+  - Highlight: spreads > 10% annualized
+
+#### UX
+
+```
+┌─ Funding Rates ──────────────────────────────────────────────────┐
+│  [Current] [History] [Arb]              Next funding: 2h 14m 32s │
+│                                                                   │
+│  Pair        Binance    Bybit     OKX      Avg      Ann. APR    │
+│  BTCUSDT     0.0100%    0.0087%   0.0095%  0.0094%    10.3%     │
+│  ETHUSDT     0.0150%    0.0142%   0.0138%  0.0143%    15.7%     │
+│  SOLUSDT     0.0320%    0.0298%   0.0315%  0.0311%    34.1%  ⚠ │
+│  DOGEUSDT   -0.0200%   -0.0180%  -0.0210% -0.0197%   -21.5%    │
+│  XRPUSDT     0.0050%    0.0048%   0.0052%  0.0050%     5.5%     │
+│  ARBUSDT     0.0450%    0.0420%   0.0480%  0.0450%    49.3%  ⚠ │
+│                                                                   │
+│  Filter: [____________]  Min rate: [0.01%]  [BN ✓] [BY ✓] [OKX ✓]│
+└──────────────────────────────────────────────────────────────────┘
+```
+
+#### Widget Config
+
+```typescript
+{ id: 'Funding', label: 'Funding', group: 'market', defaultVisible: false }
+```
+
+---
+
+### LiquidationWidget — Liquidation Level Map
+
+#### Rationale (No Bloomberg equivalent — crypto-specific)
+
+Leveraged positions create liquidation clusters at specific price levels. When price approaches these clusters, cascading liquidations create violent moves. Traders use this to predict "liquidity magnets" — price tends to hunt these clusters. Tools like CoinGlass and Hyblock Capital charge $50-100/mo for this data.
+
+#### Architecture
+
+```
+LiquidationWidget/
+├── index.tsx         # Main view: liquidation chart, controls, stats
+├── types.ts          # LiquidationLevel, LiquidationCluster, OI data
+├── mockData.ts       # Mock liquidation levels for BTC/ETH/SOL
+├── chart.ts          # Canvas-based horizontal bar chart renderer
+└── tabs/
+    ├── MapTab.tsx        # Liquidation heatmap/bar chart (default)
+    ├── StatsTab.tsx      # Long/short ratio, OI breakdown
+    └── HistoryTab.tsx    # Recent large liquidation events
+```
+
+#### Data Model
+
+```typescript
+interface LiquidationLevel {
+  price: number              // price level
+  longLiquidation: number    // USD value of long positions liquidated if price drops here
+  shortLiquidation: number   // USD value of short positions liquidated if price rises here
+}
+
+interface LiquidationCluster {
+  priceRange: [number, number]  // e.g., [95000, 95500]
+  side: 'long' | 'short'
+  totalValue: number            // aggregate USD
+  leverage: string              // dominant leverage tier: "10x", "25x", "50x", "100x"
+}
+
+interface LiquidationEvent {
+  timestamp: number
+  exchange: string
+  pair: string
+  side: 'long' | 'short'
+  amount: number       // USD
+  price: number        // liquidation price
+}
+```
+
+#### Phase 1 Implementation
+
+- **Mock data**: liquidation levels for BTCUSDT every $100 from -10% to +10% around current mock price
+- **Map tab** (default): horizontal bar chart rendered on canvas
+  - Y-axis: price levels (current price marked with horizontal line)
+  - X-axis: cumulative liquidation volume (USD)
+  - Left bars (green): short liquidation clusters (above current price — squeeze potential)
+  - Right bars (red): long liquidation clusters (below current price — cascade risk)
+  - Color intensity by leverage tier (100x = dark, 10x = light)
+  - Hover: tooltip with exact price, total volume, leverage breakdown
+  - Current price line with live indicator
+- **Stats tab**:
+  - Long/Short ratio (pie chart or bar)
+  - Total open interest by exchange
+  - Largest single position estimate
+  - 24h liquidation volume (long vs short)
+- **History tab**:
+  - Table of recent large liquidation events (>$1M)
+  - Columns: Time, Exchange, Pair, Side, Amount, Price
+  - Color-coded: red for long liquidations, green for short
+  - Mock: 20 recent events
+
+#### Data Sources (Phase 2)
+
+| Source | Cost | Data |
+|--------|------|------|
+| CoinGlass API | Free tier limited, Pro $50/mo | Aggregated liquidation levels, OI |
+| Binance `GET /fapi/v1/openInterest` | Free | Per-pair OI |
+| Binance `GET /futures/data/openInterestHist` | Free | Historical OI |
+| Binance `GET /fapi/v1/forceOrders` | Free | Recent liquidation events |
+| Bybit `GET /v5/market/open-interest` | Free | Per-pair OI |
+| Hyblock Capital API | $99/mo | Detailed liquidation heatmap data |
+
+**Note on liquidation level estimation**: Exchanges don't publish exact liquidation levels. They're estimated by:
+1. Observing open interest changes at price levels
+2. Computing where positions at various leverage tiers would be liquidated given current OI
+3. Aggregating across exchanges
+
+CoinGlass and Hyblock do this estimation. Self-computing requires historical OI data + position leverage distribution assumptions.
+
+#### UX
+
+```
+┌─ Liquidations ────────────────────────────────────────────────┐
+│  [Map] [Stats] [History]          BTCUSDT ▼    [4h ▼]        │
+│                                                               │
+│  Short Liquidations (squeeze ↑)                               │
+│  $101,000  ████████████████████████   $420M                   │
+│  $100,500  ██████████████           $280M                     │
+│  $100,000  ████████████████████     $380M                     │
+│  $99,500   ██████                   $120M                     │
+│  ─────────── $97,250 (current) ────────────                   │
+│  $96,500   ████████                 $160M                     │
+│  $96,000   ██████████████████████████████   $580M  ⚠ cluster │
+│  $95,500   ████████████████████████ $440M  ⚠ cluster         │
+│  $95,000   ██████████               $200M                     │
+│  Long Liquidations (cascade ↓)                                │
+│                                                               │
+│  Long liq below: $2.1B    Short liq above: $1.6B             │
+└───────────────────────────────────────────────────────────────┘
+```
+
+#### Widget Config
+
+```typescript
+{ id: 'Liquidation', label: 'Liquidation', group: 'market', defaultVisible: false }
+```
+
+---
+
+### OnchainWidget — On-Chain Analytics
+
+#### Rationale (`Bloomberg: FLOW`)
+
+On-chain data is unique to crypto — no traditional market has transparent ledgers where you can watch money move in real time. Exchange inflows predict sell pressure. Whale accumulation predicts pumps. Stablecoin supply on exchanges is "dry powder." This is alpha that doesn't exist in traditional finance.
+
+#### Architecture
+
+```
+OnchainWidget/
+├── index.tsx         # Tab navigation, chain selector
+├── types.ts          # WhaleTransaction, ExchangeFlow, NetworkStats
+├── mockData.ts       # Sample whale movements, flow data, network metrics
+└── tabs/
+    ├── FlowTab.tsx       # Exchange inflow/outflow charts (default)
+    ├── WhaleTab.tsx      # Large transaction feed
+    ├── SupplyTab.tsx     # Stablecoin supply, exchange reserves
+    └── NetworkTab.tsx    # Active addresses, hash rate, gas
+```
+
+#### Data Sources
+
+| Source | Cost | Data | API |
+|--------|------|------|-----|
+| Whale Alert API | Free (10 req/min) | Large transactions >$500K | `GET /v1/transactions` |
+| Glassnode | Free tier limited, Advanced $39/mo | Exchange flows, NUPL, SOPR | REST API |
+| Arkham Intelligence | Free tier | Labeled wallets, entity tracking | REST API |
+| Nansen | $150/mo+ | Smart money flow, token god mode | REST API |
+| CryptoQuant | Free tier, Pro $49/mo | Exchange reserves, miner flows | REST API |
+| Direct RPC | Free (Alchemy/Infura) | Raw transaction monitoring | `eth_subscribe` |
+
+**Phase 1 recommendation:** Whale Alert free tier is sufficient for a compelling Phase 1 — real large transaction data at no cost.
+
+#### Phase 1 Implementation
+
+- **Mock data**: realistic whale transactions, exchange flow time series, supply data
+- **Flow tab** (default):
+  - Line chart: exchange inflow vs outflow over 7d (for BTC, ETH)
+  - Net flow bar chart (inflow - outflow, positive = net deposit = bearish)
+  - Exchange breakdown: Binance, Coinbase, Kraken, Bybit net flow
+  - Summary: "Net $240M BTC flowed INTO exchanges in 24h" (bearish signal)
+- **Whale tab**:
+  - Live-style feed of large transactions (>$1M)
+  - Columns: Time, Amount, Asset, From (labeled), To (labeled), USD Value
+  - From/To labels: "Binance Hot Wallet", "Unknown", "Coinbase", "Whale 0x742d..."
+  - Color: red if TO exchange (sell pressure), green if FROM exchange (withdrawal = bullish)
+  - Filter by: asset, min amount, direction (to-exchange / from-exchange / unknown)
+- **Supply tab**:
+  - Total stablecoin supply on exchanges (USDT + USDC + DAI) — bar chart over time
+  - "Dry powder" indicator: high stablecoin supply = buying potential
+  - BTC exchange reserves: declining = bullish (coins moving to cold storage)
+  - Exchange reserve breakdown by exchange
+- **Network tab** (simple stats):
+  - BTC: hash rate, difficulty, active addresses (24h)
+  - ETH: gas price (gwei), active addresses, burn rate
+  - Solana: TPS, active addresses
+  - Mini sparkline per metric
+
+#### UX
+
+```
+┌─ On-Chain ────────────────────────────────────────────────────┐
+│  [Flow] [Whales] [Supply] [Network]              [BTC ▼]     │
+│                                                               │
+│  Exchange Net Flow (7d)                                       │
+│   +$400M ┤     ╱╲                                            │
+│   +$200M ┤    ╱  ╲    ╱╲                                     │
+│        0 ┤───╱────╲──╱──╲────────                             │
+│   -$200M ┤          ╲╱    ╲  ╱                                │
+│   -$400M ┤                 ╲╱                                 │
+│          └──Mar 1──Mar 3──Mar 5──Mar 7──                      │
+│                                                               │
+│  24h Summary:                                                 │
+│  → Net inflow: +$240M (bearish)                              │
+│  → Largest: 5,000 BTC → Binance ($485M)                      │
+│  → Exchange reserves: 2.31M BTC (-0.2% vs 7d ago)            │
+└───────────────────────────────────────────────────────────────┘
+```
+
+#### Widget Config
+
+```typescript
+{ id: 'Onchain', label: 'On-Chain', group: 'market', defaultVisible: false, hasSettings: true }
+```
+
+Settings: tracked assets, data source API keys (Phase 2), whale threshold ($500K / $1M / $5M), refresh interval, alert integration.
+
+---
+
+### MacroWidget — Macro Dashboard
+
+#### Rationale (`Bloomberg: ECFC / ECST`)
+
+Crypto doesn't trade in a vacuum. DXY (Dollar Index) strength crushes crypto. 10Y yield spikes drain risk assets. Fed hawkishness changes the entire regime. Traders who only watch crypto charts miss the macro context that drives 50%+ of price action. This is the "what is the macro backdrop right now" at a glance.
+
+Bloomberg terminals show macro data on every screen. WTS should have a compact macro panel that answers "is the macro environment risk-on or risk-off?" without opening another app.
+
+#### Architecture
+
+```
+MacroWidget/
+├── index.tsx         # Compact dashboard, all metrics visible at once
+├── types.ts          # MacroMetric, MacroData, FearGreedIndex
+├── mockData.ts       # Current values + 30d sparkline data for each metric
+└── sparkline.ts      # Tiny inline canvas chart renderer (~30 lines)
+```
+
+#### Metrics
+
+| Metric | What It Tells You | Data Source (Phase 2) | Update Frequency |
+|--------|-------------------|----------------------|-----------------|
+| **DXY** (Dollar Index) | Dollar strength — inverse correlation with crypto | TradingView embed or Alpha Vantage | Real-time |
+| **US 10Y Yield** | Risk-free rate — rising = drain from risk assets | FRED API (free) | 15min |
+| **Fear & Greed Index** | Market sentiment (0-100) | alternative.me API (free) | Daily |
+| **BTC Dominance** | Capital rotation — falling = altseason | CoinGecko (free) | 5min |
+| **Total Crypto MCap** | Market-wide trend | CoinGecko (free) | 5min |
+| **ETF Net Flow** (BTC/ETH) | Institutional demand | SoSoValue / farside.co | Daily |
+| **Fed Funds Rate** | Current rate + market expectation | FRED API (free) | Static (changes 8x/yr) |
+| **US CPI (latest)** | Inflation — drives Fed policy | BLS.gov (free) | Monthly |
+| **M2 Money Supply** | Global liquidity — strong BTC correlation | FRED API (free) | Weekly |
+| **S&P 500** | Risk sentiment proxy | Alpha Vantage / TradingView | Real-time |
+| **Gold (XAU/USD)** | Safe haven demand — sometimes correlates with BTC | Alpha Vantage | Real-time |
+| **VIX** | Volatility index — high = risk-off | CBOE (delayed) | Real-time |
+
+#### Phase 1 Implementation
+
+- **Mock data**: current values for all 12 metrics + 30-day sparkline arrays
+- **Compact grid layout**: 2-3 columns of metric cards, each card ~80x40px
+  - Metric name (small text)
+  - Current value (large text, bold)
+  - Change indicator: arrow + % change + color (green up, red down)
+  - Inline sparkline (30d, canvas, ~60x20px)
+- **Fear & Greed**: circular gauge or color bar (0=Extreme Fear/red, 50=Neutral/yellow, 100=Extreme Greed/green)
+- **Regime indicator** (aggregate): simple heuristic from metrics
+  - "Risk-On" (green): DXY falling + VIX low + F&G > 50 + ETF inflows
+  - "Risk-Off" (red): DXY rising + VIX high + F&G < 25 + ETF outflows
+  - "Neutral" (yellow): mixed signals
+  - Displayed as a banner at top of widget
+- **Click metric**: expand to show 30d chart in a small popover
+- **All data static in Phase 1** — no API calls, but realistic values
+
+#### UX
+
+```
+┌─ Macro ──────────────────────────────────────────────────┐
+│  Regime: RISK-ON 🟢                                     │
+│                                                          │
+│  DXY          104.23  ▼ -0.3%   ╲╱╲╱╲                  │
+│  10Y Yield    4.28%   ▲ +0.02   ╱╲╱╲╱                  │
+│  F&G Index    72 Greed ████████░░                        │
+│  BTC Dom.     54.2%   ▼ -0.4%   ╲╲╱╲╱                  │
+│  Crypto MCap  $3.2T   ▲ +2.1%   ╱╱╲╱╱                  │
+│  ETF Flow     +$340M  ▲         ████                     │
+│  S&P 500      5,842   ▲ +0.8%   ╱╲╱╱╱                  │
+│  Gold         $2,915  ▲ +0.3%   ╱╱╱╲╱                  │
+│  VIX          14.2    ▼ -1.3    ╲╱╲╲╲                   │
+│  Fed Rate     5.50%   ─ 0       ─────                    │
+│  CPI          3.1%    ▼ -0.1    ╲╲╲──                   │
+│  M2 Supply    $21.4T  ▲ +0.8%   ╱╱╱╱╱                  │
+└──────────────────────────────────────────────────────────┘
+```
+
+#### Widget Config
+
+```typescript
+{ id: 'Macro', label: 'Macro', group: 'market', defaultVisible: false }
+```
+
+---
+
+### Pre-load / Bootstrap Layer
+
+Before widgets become interactive, they need exchange metadata that populates Autocomplete options, fee displays, network selectors, etc. This data is **not** fetched globally on app start — it is **scoped per widget** so that only the widgets the user has open trigger API calls. Widgets that are closed or not yet added to the layout do not load anything.
+
+#### Principle: Widget-scoped loading
+
+- Each widget is responsible for loading its own metadata when it mounts (or when its exchange context changes).
+- The app shell (AppBar, Drawer, grid layout) renders immediately — no global loading screen.
+- Individual widgets show their own loading/progress state until their metadata is ready.
+- If a widget is closed/removed from layout, its loading is cancelled and its cached metadata can be garbage collected.
+
+#### Loading UX
+
+When a widget is loading metadata, it renders a progress indicator inside its own bounds:
+
+```
+┌─ ExchangeWidget ──────────────────────────────┐
+│  [Upbit] [Bithumb] [Binance] ...              │
+│                                                │
+│        Loading Binance metadata...             │
+│        ████████████░░░░░░░░  4/7               │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+All 7 metadata items are fetched in **parallel** (`Promise.all`). The progress bar advances as each resolves. No per-item detail list — compact UI.
+
+After all metadata for the current exchange is loaded, the widget renders its normal UI. Switching exchange tabs within the widget triggers a new load if that exchange's metadata isn't already cached.
+
+#### Metadata to pre-load per exchange (ExchangeWidget)
+
+| # | Field in `ExchangeMetadata` | Populates | Mock Source | Phase 2 Binance API | Notes |
+|---|---|---|---|---|---|
+| 1 | `tradingPairs` | Pair selector Autocomplete (index.tsx) | `mockAllTradingPairs` | `GET /api/v3/ticker/price` (~145KB) | **NOT** `/api/v3/exchangeInfo` — that's ~15MB, too heavy. `/ticker/price` returns all symbols with prices. Caveat: includes delisted pairs — requesting a delisted pair on other endpoints may return an error. Needs client-side filtering or validation. |
+| 2 | `depositInfo` | DepositTab asset/network Autocomplete, address display | `mockAllDepositInfo` | `GET /sapi/v1/capital/config/getall` → filter `depositAllEnable: true` | Returns all assets with their network configs. Extract deposit-enabled assets, then per-asset call `GET /sapi/v1/capital/deposit/address` for actual addresses. |
+| 3 | `withdrawInfo` | WithdrawTab asset/network Autocomplete, fee display | `mockAllWithdrawInfo` | `GET /sapi/v1/capital/config/getall` → filter `withdrawAllEnable: true` | Same endpoint as deposit — extract withdraw-enabled assets with network fees. |
+| 4 | `transferAssets` | TransferTab asset Autocomplete | `mockAllTransferAssets` | Derive from `GET /sapi/v1/capital/config/getall` | **No dedicated endpoint exists.** `POST /sapi/v1/asset/transfer` is the action endpoint (execute transfer), not a query. `GET /sapi/v1/asset/assetDetail` lacks transfer info. **Solution:** `/sapi/v1/capital/config/getall` returns all coins with a `trading: true/false` field — filter coins where `trading: true`. This is the same endpoint already fetched for deposit/withdraw info, so **no extra API call needed**. |
+| 5 | `isolatedMarginPairs` | TransferTab isolated pair selector | `mockAllIsolatedMarginPairs` | `GET /sapi/v1/margin/isolated/allPairs` | Returns `{ base, quote, symbol, isBuyAllowed, isSellAllowed, isMarginTrade }` per pair. [Docs](https://developers.binance.com/docs/margin_trading/market-data/Get-All-Isolated-Margin-Symbol) |
+| 6 | `crossMarginPairs` | MarginTab pair Autocomplete | `mockAllCrossMarginPairs` | `GET /sapi/v1/margin/allPairs` | Returns `{ base, quote, symbol, id, isBuyAllowed, isSellAllowed, isMarginTrade, delistTime? }` per pair. [Docs](https://developers.binance.com/docs/margin_trading/market-data/Get-All-Cross-Margin-Pairs) |
+| 7 | `pairInfo` | TransferTab asset filtering (base/quote lookup for isolated margin) | `mockAllPairInfo` | Derive from #5 + #6 responses | **No extra API call needed.** Both `/margin/isolated/allPairs` (#5) and `/margin/allPairs` (#6) return `base` and `quote` fields per pair. Build `pairInfo` map by merging these responses: `{ [symbol]: { base, quote } }`. If base/quote is ever needed for non-margin pairs, use `/api/v3/exchangeInfo?symbols=["SYM1","SYM2"]` to query specific symbols (the `symbols` param avoids the full 15MB response). |
+
+**API endpoint investigation status — all resolved:**
+- `tradingPairs`: Use `GET /api/v3/ticker/price` (~145KB). Caveat: includes delisted pairs.
+- `depositInfo` / `withdrawInfo`: Use `GET /sapi/v1/capital/config/getall`. Single call, filter by `depositAllEnable` / `withdrawAllEnable`.
+- `transferAssets`: Derive from same `/sapi/v1/capital/config/getall` response — filter coins where `trading: true`. No extra call.
+- `isolatedMarginPairs`: Use `GET /sapi/v1/margin/isolated/allPairs`. Returns base/quote per pair.
+- `crossMarginPairs`: Use `GET /sapi/v1/margin/allPairs`. Returns base/quote per pair.
+- `pairInfo`: Derive from #5 + #6 margin pair responses. No extra call. Fallback: `/api/v3/exchangeInfo?symbols=[...]` for specific non-margin pairs.
+
+**Effective API calls per exchange (Phase 2):** Only **4 actual HTTP requests** needed to populate all 7 metadata fields:
+
+| # | Endpoint | Provides |
+|---|---|---|
+| 1 | `GET /api/v3/ticker/price` | `tradingPairs` |
+| 2 | `GET /sapi/v1/capital/config/getall` | `depositInfo` + `withdrawInfo` + `transferAssets` (3 fields from 1 call) |
+| 3 | `GET /sapi/v1/margin/isolated/allPairs` | `isolatedMarginPairs` + contributes to `pairInfo` |
+| 4 | `GET /sapi/v1/margin/allPairs` | `crossMarginPairs` + contributes to `pairInfo` |
+
+Note: `/api/v3/exchangeInfo` supports `symbols`, `permissions`, and `symbolStatus` query params to reduce response size if ever needed for non-margin pair lookups.
+
+#### Metadata to pre-load per exchange (other widgets)
+
+| Widget | Data | API Source |
+|--------|------|-----------|
+| **OrderbookWidget** | Available pairs, depth config | `GET /api/v3/exchangeInfo` (shared with ExchangeWidget) |
+| **ArbitrageWidget** | Pairs available on each exchange | Same `exchangeInfo` per exchange |
+
+#### Caching strategy
+
+- **Per-exchange, per-data-type cache** — stored in Jotai atoms (or Tauri-side state). Key: `{exchangeId}:{dataType}`.
+- **TTL-based invalidation** — metadata like available assets/networks changes infrequently (hours/days). Use a long TTL (e.g., 30 min). Account balances use a shorter TTL or are refreshed via WebSocket events.
+- **Shared across widgets** — if ExchangeWidget already loaded Binance's `exchangeInfo`, OrderbookWidget reuses it from the cache instead of fetching again.
+- **Lazy per-exchange** — switching to a new exchange tab triggers a load only if that exchange isn't cached yet.
+
+#### Implementation (Phase 1)
+
+```typescript
+// Already implemented in preload.ts — Jotai atoms with Map-based cache per exchangeId.
+// See src/components/widgets/ExchangeWidget/preload.ts for the actual implementation.
+//
+// Key design:
+// - metadataCache: Map<exchangeId, ExchangeMetadata> (module-level cache)
+// - Jotai atoms per exchangeId for reactive UI updates
+// - useExchangeMetadata(exchangeId) hook: triggers load on mount, returns { metadata, loading, progress }
+// - loadExchangeMetadata(): fetches all 7 items in parallel via Promise.all, reports { total, loaded }
+// - Phase 2: replace mock delays with Tauri invoke() calls (parallel execution preserved)
+```
 
 ---
 

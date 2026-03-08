@@ -286,83 +286,11 @@ Decrypted payload mirrors the vault schema:
 
 **Phase 2 migration:** Export/Import buttons call Tauri `invoke('export_vault')` / `invoke('import_vault')` instead of Web Crypto. Same `.wts` file format, same UX. Rust-side encryption replaces JS-side.
 
-### TotpWidget — TOTP 2FA Code Generator
+### TotpWidget — Phase 2 Notes
 
-#### Rationale
-
-Crypto exchanges require 2FA for withdrawals, API key creation, and security changes. A desktop TOTP generator eliminates phone switching during time-critical trading. This is a utility widget — speed of access over security theater (the secret is already on this device).
-
-Reference: [Authy Desktop](https://authy.com/), [totp.danhersam.com](https://totp.danhersam.com/)
-
-#### Architecture
-
-```
-TotpWidget/
-├── index.tsx       # Entry list, add/edit/delete, click-to-copy
-├── totp.ts         # Pure TOTP computation (Web Crypto, 0 npm deps)
-└── types.ts        # TotpEntry type, state shape
-```
-
-**Zero npm dependencies.** TOTP (RFC 6238) is ~50 lines:
-- Base32 decode: ~15 lines
-- HMAC-SHA1: `crypto.subtle.sign('HMAC', key, data)` (Web Crypto built-in)
-- Dynamic truncation → 6-digit code: ~10 lines
-
-#### Data Model
-
-```typescript
-interface TotpEntry {
-  id: string           // nanoid or crypto.randomUUID()
-  label: string        // "Binance", "Upbit", etc.
-  secret: string       // base32-encoded secret from exchange QR
-  digits: 6 | 8        // code length (default 6)
-  period: 30 | 60      // seconds (default 30)
-  algorithm: 'SHA-1'   // standard, extensible to SHA-256/SHA-512
-}
-```
-
-Storage: `atomWithStorage<TotpEntry[]>('totpEntries', [])` — localStorage Phase 1, vault Phase 2.
-
-**Security note:** TOTP secrets in localStorage are as sensitive as API keys — anyone with the secret can generate valid 2FA codes indefinitely. Same Phase 1 stance as DEX mnemonic. Phase 2: moves into `vault.enc`.
-
-#### Timer Strategy (Performance)
-
-All TOTP entries share the same 30-second wall-clock cycle (`Math.floor(Date.now() / 1000 / 30)`). One timer drives everything:
-
-- **1 Hz `setInterval`** updates the countdown display (seconds remaining + progress bar)
-- **TOTP recomputation** happens only when the 30s boundary crosses — not per second
-- **Isolated countdown component** (`TotpCountdown`) owns the timer state — parent does not re-render per second
-- **Inline `style={}`** for progress bar width — no Emotion style leak
-
-Impact: negligible. PremiumTable handles hundreds of WS messages/sec. A 1Hz countdown is nothing.
-
-#### UX
-
-```
-┌─ TOTP ──────────────────────────────────┐
-│  Binance       482 193     ████░░  12s  │
-│  Upbit         739 015     ████░░  12s  │
-│  OKX           294 857     ████░░  12s  │
-│                                          │
-│  [+ Add]                                 │
-└──────────────────────────────────────────┘
-```
-
-- Click code → copy to clipboard + 1s lime flash + log to ConsoleWidget
-- All entries show same countdown (shared 30s cycle)
-- Add: dialog with Label + Secret (paste from exchange 2FA setup page)
-- Edit/Delete: icon buttons per row (pencil, trash)
-- Secret input: password-masked, toggle visibility
-- Entries ordered by label alphabetically, or drag-to-reorder
-
-#### Widget Config
-
-```typescript
-// in defaults.ts WIDGET_REGISTRY
-{ id: 'Totp', label: 'TOTP', defaultVisible: false, group: 'utilities' }
-```
-
-Not visible by default — user enables via Drawer when they need it.
+- TOTP secrets move from localStorage to `vault.enc` (encrypted vault)
+- Backup/restore via unified `.wts` file export
+- See HANDOFF.md for full widget spec
 
 ### Phase 1 Mock → Phase 2 API Replacement Tracker
 
@@ -615,34 +543,11 @@ Double fill (unlikely): only if deposited amount > sell order size
 | **Market Data (shared tokio)** | ~4 threads, thousands of tasks | WS feeds, REST queries, balance checks, UI events | Subscription aggregation, cache dedup |
 | **Sell Cannon (dedicated runtime)** | Own OS thread, own tokio runtime (or blocking), own HTTP client + connection pool | Pipelined sell orders, withdrawal execution | Isolation, bounded in-flight, 429 avoidance, token bucket coordination |
 
-### Pre-load / Bootstrap Layer
+> Full widget specifications (architecture, data model, Phase 1 implementation, UX) are in [HANDOFF.md](./HANDOFF.md#widget-specifications). This section covers Phase 2-specific enhancements only.
 
-Before widgets become interactive, they need exchange metadata that populates Autocomplete options, fee displays, network selectors, etc. This data is **not** fetched globally on app start — it is **scoped per widget** so that only the widgets the user has open trigger API calls. Widgets that are closed or not yet added to the layout do not load anything.
+### Pre-load / Bootstrap Layer — Phase 2 Notes
 
-#### Principle: Widget-scoped loading
-
-- Each widget is responsible for loading its own metadata when it mounts (or when its exchange context changes).
-- The app shell (AppBar, Drawer, grid layout) renders immediately — no global loading screen.
-- Individual widgets show their own loading/progress state until their metadata is ready.
-- If a widget is closed/removed from layout, its loading is cancelled and its cached metadata can be garbage collected.
-
-#### Loading UX
-
-When a widget is loading metadata, it renders a progress indicator inside its own bounds:
-
-```
-┌─ ExchangeWidget ──────────────────────────────┐
-│  [Upbit] [Bithumb] [Binance] ...              │
-│                                                │
-│        Loading Binance metadata...             │
-│        ████████████░░░░░░░░  4/7               │
-│                                                │
-└────────────────────────────────────────────────┘
-```
-
-All 7 metadata items are fetched in **parallel** (`Promise.all`). The progress bar advances as each resolves. No per-item detail list — compact UI.
-
-After all metadata for the current exchange is loaded, the widget renders its normal UI. Switching exchange tabs within the widget triggers a new load if that exchange's metadata isn't already cached.
+See HANDOFF.md for full bootstrap layer spec (principle, loading UX, caching strategy, implementation sketch).
 
 #### Metadata to pre-load per exchange (ExchangeWidget)
 
@@ -675,43 +580,9 @@ After all metadata for the current exchange is loaded, the widget renders its no
 
 Note: `/api/v3/exchangeInfo` supports `symbols`, `permissions`, and `symbolStatus` query params to reduce response size if ever needed for non-margin pair lookups.
 
-#### Metadata to pre-load per exchange (other widgets)
+#### Remaining Phase 2 migration steps
 
-| Widget | Data | API Source |
-|--------|------|-----------|
-| **OrderbookWidget** | Available pairs, depth config | `GET /api/v3/exchangeInfo` (shared with ExchangeWidget) |
-| **ArbitrageWidget** | Pairs available on each exchange | Same `exchangeInfo` per exchange |
-
-#### Caching strategy
-
-- **Per-exchange, per-data-type cache** — stored in Jotai atoms (or Tauri-side state). Key: `{exchangeId}:{dataType}`.
-- **TTL-based invalidation** — metadata like available assets/networks changes infrequently (hours/days). Use a long TTL (e.g., 30 min). Account balances use a shorter TTL or are refreshed via WebSocket events.
-- **Shared across widgets** — if ExchangeWidget already loaded Binance's `exchangeInfo`, OrderbookWidget reuses it from the cache instead of fetching again.
-- **Lazy per-exchange** — switching to a new exchange tab triggers a load only if that exchange isn't cached yet.
-
-#### Implementation sketch (Phase 2)
-
-```typescript
-// Already implemented in preload.ts — Jotai atoms with Map-based cache per exchangeId.
-// See src/components/widgets/ExchangeWidget/preload.ts for the actual implementation.
-//
-// Key design:
-// - metadataCache: Map<exchangeId, ExchangeMetadata> (module-level cache)
-// - Jotai atoms per exchangeId for reactive UI updates
-// - useExchangeMetadata(exchangeId) hook: triggers load on mount, returns { metadata, loading, progress }
-// - loadExchangeMetadata(): fetches all 7 items in parallel via Promise.all, reports { total, loaded }
-// - Phase 2: replace mock delays with Tauri invoke() calls (parallel execution preserved)
-```
-
-#### Phase 1 → Phase 2 migration path
-
-Steps 1–3 are **already implemented** in Phase 1 with mock data:
-
-1. ~~Create `ExchangeMetadata` type~~ → Done in `preload.ts`
-2. ~~Replace each hardcoded map with metadata from preload hook~~ → Done. All tabs accept `metadata` prop.
-3. ~~Add loading state check with progress UI~~ → Done. `index.tsx` shows loading bar while metadata loads.
-
-**Remaining for Phase 2:**
+Steps 1-3 are already implemented in Phase 1. Remaining:
 
 4. Replace mock delays in `loadExchangeMetadata()` with Tauri `invoke()` calls to Rust backend
 5. Implement Rust handlers that call actual exchange APIs (with signing, rate limiting)
@@ -719,4 +590,283 @@ Steps 1–3 are **already implemented** in Phase 1 with mock data:
 7. Handle delisted pairs from `/api/v3/ticker/price` (filter or validate)
 
 ---
+
+### SnsWidget — Phase 2 Notes
+
+See HANDOFF.md for full widget spec (architecture, data model, Phase 1 implementation, UX).
+
+#### API & Cost
+
+| Plan | Price | Streaming | Search | Rate Limit |
+|------|-------|-----------|--------|------------|
+| X API Free | $0 | No | No | 1,500 tweets/month write-only |
+| X API Basic | $100/mo | No | Yes (limited) | 10k reads/month |
+| X API Pro | $5,000/mo | **Yes** (filtered stream) | Yes (full archive) | 1M reads/month |
+| X API Enterprise | Custom | Yes (full firehose) | Yes | Custom |
+
+**Filtered Stream (Pro+)** is the target — rules like `from:caborek OR from:WuBlockchain OR #BTC` push matching tweets in real-time over a persistent HTTP connection. Basic tier only supports polling via search endpoint (15 req/15min), which adds 30-60s latency.
+
+**Alternative (cheaper):** Scraping/unofficial APIs (Nitter-style) — unreliable, breaks frequently. Not recommended for a trading tool.
+
+#### Phase 2 data flow
+
+```
+X API Filtered Stream ──→ Rust (tokio, persistent HTTP) ──→ Tauri Event ──→ React ──→ SnsWidget
+                          parse JSON, apply local filters    emit per tweet   append    render
+```
+
+- Rust-side: single persistent connection to `https://api.twitter.com/2/tweets/search/stream`
+- Stream rules managed via `POST /2/tweets/search/stream/rules`
+- Tweets parsed → emitted as Tauri events → SnsWidget appends to local buffer
+- Buffer capped (e.g., 200 tweets), oldest evicted
+- Click tweet → open in browser (`shell.open()`)
+
+---
+
+### NotificationWidget — Phase 2 Notes
+
+See HANDOFF.md for full widget spec (architecture, alert rule types, Phase 1 implementation, UX).
+
+#### Service Costs
+
+| Service | Cost | Setup |
+|---------|------|-------|
+| Telegram Bot API | Free | Create bot via @BotFather, user sends `/start` |
+| Twilio SMS | ~$0.0075/msg + $1/mo phone number | Account + verified number |
+| Twilio Voice | ~$0.013/min + $1/mo phone number | Same account, TwiML for call script |
+| AWS SNS (alternative) | $0.00645/SMS, $0.013/min voice | AWS account, IAM config |
+
+**Telegram is the primary channel** — free, instant, rich formatting (can include charts/screenshots). SMS and phone calls are escalation-only for critical alerts.
+
+#### Phase 2 data flow (Rust alert engine)
+
+```
+Price feed / Order event / System event
+    │
+    ▼
+Rust alert engine (evaluates rules against incoming data)
+    │ rule matched
+    ▼
+Escalation manager (Rust, tokio)
+    ├── send_telegram(bot_token, chat_id, message)
+    ├── wait ack (poll Telegram getUpdates or webhook)
+    ├── if no ack → send_sms(twilio_sid, to, message)
+    ├── wait ack
+    └── if no ack → call_phone(twilio_sid, to, twiml_url) → repeat
+    │
+    ▼
+Tauri Event → NotificationWidget (status update: "Telegram sent", "SMS sent", "Calling...")
+```
+
+#### Escalation chain implementation
+
+The escalation chain runs entirely in Rust (tokio async tasks):
+
+- **Acknowledgment detection:** Telegram reply (poll `getUpdates`), SMS reply (Twilio webhook), answering call + pressing digit, or UI "Dismiss" click
+- **Escalation timing:** configurable wait before each escalation step (default: 30s Telegram→SMS, 2min SMS→call)
+- **Max retries:** configurable repeat call limit (default 5), with 60s between calls
+- **Quiet hours:** optional — skip phone calls between configurable hours unless "critical" flag is set on the rule
+- **Custom trigger (Phase 2+):** Lua/JS expression evaluation against any data stream (e.g., `premium("BTCUSDT") > 3.0`)
+
+#### Security Note
+
+Telegram bot tokens and Twilio credentials are secrets — Phase 2 vault (`vault.enc`). Phase 1 stores in localStorage (same stance as CEX API keys and DEX mnemonic).
+
+---
+
+### TrollBoxWidget — Phase 2 Notes
+
+See HANDOFF.md for full widget spec (architecture, Phase 1 implementation, UX).
+
+#### Phase 2 architecture (WebSocket server)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  WebSocket Server (separate service, NOT Tauri backend)      │
+│                                                              │
+│  Options:                                                    │
+│  1. Self-hosted: Rust (axum + tokio-tungstenite)            │
+│  2. Managed: Ably, Pusher, or Firebase Realtime DB          │
+│  3. Decentralized: Gun.js, Matrix protocol                  │
+│                                                              │
+│  Responsibilities:                                           │
+│  - Channel management (create, join, leave)                  │
+│  - Message relay (broadcast to channel subscribers)          │
+│  - User presence (online/offline/typing)                     │
+│  - Message history (last N messages on join)                 │
+│  - Rate limiting (anti-spam)                                 │
+│  - Moderation (ban, mute, delete)                            │
+└─────────────┬───────────────────────────────────────────────┘
+              │ WebSocket
+              ▼
+         Tauri app (WS client)
+              │
+              ▼
+         TrollBoxWidget (React)
+```
+
+**Key decision:** The chat server is a **separate service** from the Tauri backend. Tauri handles exchange APIs (per-user secrets). Chat is a shared service that all WTS users connect to. Options:
+- **Self-hosted Rust server** — full control, axum + rooms + Redis pub/sub for horizontal scaling
+- **Managed service** — Ably/Pusher handles scaling, ~$25/mo for 500 concurrent connections
+- **Matrix protocol** — decentralized, self-hostable, existing clients/servers, but heavier setup
+
+#### Channel Types
+
+| Channel | Access | Purpose |
+|---------|--------|---------|
+| `#general` | All WTS users | Global trollbox, market discussion |
+| `#alerts` | All WTS users | Automated: system-wide announcements, exchange outages |
+| `#<exchange>` | All WTS users | Per-exchange discussion (e.g., `#binance`, `#upbit`) |
+| Private channel | Invite-only | Team/friend coordination, strategy discussion |
+| DM | 1:1 | Direct messages between users |
+
+---
+
+### PortfolioWidget — Phase 2 Notes
+
+See HANDOFF.md for full widget spec (architecture, data model, Phase 1 implementation, UX).
+
+#### Phase 2 Enhancements
+
+- **Auto-populate**: pull balances from all connected CEX accounts (Tauri `invoke('get_all_balances')`) and DEX wallets (RPC balance queries)
+- **Live prices**: from shared data bus WebSocket feeds
+- **Auto cost basis**: compute from order history (`GET /api/v3/myTrades` etc.)
+- **Portfolio history**: Tauri stores daily snapshots in local SQLite, HistoryTab renders real chart
+- **Tax report export**: cost basis + realized P&L for tax filing (FIFO/LIFO selectable)
+
+---
+
+### HeatmapWidget — Phase 2 Notes
+
+See HANDOFF.md for full widget spec (architecture, data model, Phase 1 implementation, UX).
+
+#### Phase 2 Enhancements
+
+- **Live data**: CoinGecko/CMC API via Rust, 60s refresh
+- **Cross-widget linking**: click tile → ChartWidget navigates to that pair, OrderbookWidget switches
+- **Custom watchlist overlay**: highlight tiles for coins in user's portfolio
+- **Zoom**: click sector group to zoom into that sector only, back button to return
+
+#### Phase 2 Data Sources
+
+| Source | Cost | Coverage | Update Frequency |
+|--------|------|----------|-----------------|
+| CoinGecko `/coins/markets` | Free (30 req/min) | Top 250+ | Every 60s |
+| CoinMarketCap `/v1/cryptocurrency/listings/latest` | Free (333 req/day) | Top 200+ | Every 60s |
+| Binance `/api/v3/ticker/24hr` | Free | Binance-listed only | Real-time |
+
+---
+
+### CalendarWidget — Phase 2 Notes
+
+See HANDOFF.md for full widget spec (architecture, data model, event categories, Phase 1 implementation, UX).
+
+#### Phase 2 Enhancements
+
+- **Auto-populate**: Rust backend fetches events from APIs on a schedule
+  - TokenUnlocks.app: `GET /api/v1/unlocks?start=...&end=...`
+  - GitHub Releases API: for protocol upgrade dates
+  - Snapshot: `graphql query { proposals(...) }` for governance votes
+  - Deribit: expiry dates from `/public/get_instruments`
+  - Fed calendar: static schedule + scraping
+- **Smart conflict detection**: warn when multiple high-impact events overlap (e.g., FOMC + large token unlock = extreme volatility)
+- **Historical event replay**: "what happened last time this event occurred?" — link to ChartWidget at that date
+- **iCal export**: `.ics` file for Google Calendar / Outlook sync
+
+---
+
+### ScreenerWidget — Phase 2 Notes
+
+See HANDOFF.md for full widget spec (architecture, filterable fields, presets, Phase 1 implementation, UX).
+
+#### Phase 2 Enhancements
+
+- **Live data**: CoinGecko + exchange APIs via Rust, configurable refresh
+- **Alerts**: "Alert me when any coin matches this screen" → NotificationWidget integration
+- **Cross-widget navigation**: click result row → Chart + Orderbook focus on that pair
+- **Technical indicators**: RSI, MACD, Bollinger Bands computed from kline data in Rust
+- **Export**: CSV of current results, scheduled email/Telegram report
+
+---
+
+### FundingWidget — Phase 2 Notes
+
+See HANDOFF.md for full widget spec (architecture, data model, Phase 1 implementation, UX).
+
+#### Phase 2 Enhancements
+
+- **Live data**: Binance `GET /fapi/v1/premiumIndex`, Bybit `GET /v5/market/tickers?category=linear`, OKX `GET /api/v5/public/funding-rate`
+- **Real-time via WS**: Binance `markPrice@1s` stream, Bybit `tickers` topic
+- **Historical data**: `GET /fapi/v1/fundingRate?limit=1000` for backfill
+- **Alert integration**: "Alert me when BTCUSDT funding > 0.05%" → NotificationWidget
+- **Auto-arb strategy** (Phase 2+): one-click "open delta-neutral" → simultaneously long spot + short perp on configured exchanges
+
+---
+
+### LiquidationWidget — Phase 2 Notes
+
+See HANDOFF.md for full widget spec (architecture, data model, Phase 1 implementation, UX).
+
+#### Phase 2 Data Sources
+
+| Source | Cost | Data |
+|--------|------|------|
+| CoinGlass API | Free tier limited, Pro $50/mo | Aggregated liquidation levels, OI |
+| Binance `GET /fapi/v1/openInterest` | Free | Per-pair OI |
+| Binance `GET /futures/data/openInterestHist` | Free | Historical OI |
+| Binance `GET /fapi/v1/forceOrders` | Free | Recent liquidation events |
+| Bybit `GET /v5/market/open-interest` | Free | Per-pair OI |
+| Hyblock Capital API | $99/mo | Detailed liquidation heatmap data |
+
+**Note on liquidation level estimation**: Exchanges don't publish exact liquidation levels. They're estimated by:
+1. Observing open interest changes at price levels
+2. Computing where positions at various leverage tiers would be liquidated given current OI
+3. Aggregating across exchanges
+
+CoinGlass and Hyblock do this estimation. Self-computing requires historical OI data + position leverage distribution assumptions.
+
+---
+
+### OnchainWidget — Phase 2 Notes
+
+See HANDOFF.md for full widget spec (architecture, data model, Phase 1 implementation, UX).
+
+#### Phase 2 Enhancements
+
+- **Whale Alert API** integration (free tier: real large transactions)
+- **Glassnode/CryptoQuant** for exchange flow data
+- **Real-time WS monitoring**: `eth_subscribe('pendingTransactions')` for mempool watching (advanced)
+- **Alert integration**: "Alert me when >1000 BTC moves to any exchange" → NotificationWidget
+- **Wallet tagging**: user can tag and track custom addresses
+- **Cross-reference**: whale deposit to exchange → check if price drops within 1h (correlation tracking)
+
+#### Phase 2 Data Sources
+
+| Source | Cost | Data | API |
+|--------|------|------|-----|
+| Whale Alert API | Free (10 req/min) | Large transactions >$500K | `GET /v1/transactions` |
+| Glassnode | Free tier limited, Advanced $39/mo | Exchange flows, NUPL, SOPR | REST API |
+| Arkham Intelligence | Free tier | Labeled wallets, entity tracking | REST API |
+| Nansen | $150/mo+ | Smart money flow, token god mode | REST API |
+| CryptoQuant | Free tier, Pro $49/mo | Exchange reserves, miner flows | REST API |
+| Direct RPC | Free (Alchemy/Infura) | Raw transaction monitoring | `eth_subscribe` |
+
+---
+
+### MacroWidget — Phase 2 Notes
+
+See HANDOFF.md for full widget spec (architecture, metrics, Phase 1 implementation, UX).
+
+#### Phase 2 Data Sources
+
+| Source | Cost | Metrics |
+|--------|------|---------|
+| FRED API (St. Louis Fed) | Free (80 req/min) | 10Y yield, Fed rate, CPI, M2 |
+| alternative.me | Free | Fear & Greed Index |
+| CoinGecko | Free | BTC dominance, total MCap |
+| Alpha Vantage | Free (5 req/min) or $50/mo | DXY, S&P 500, Gold, VIX |
+| TradingView Widget | Free | Embeddable mini charts for any instrument |
+| SoSoValue / farside.co | Free (scraping) | ETF flow data |
+
+Most data sources are free — this widget is cheap to make fully live in Phase 2.
 
