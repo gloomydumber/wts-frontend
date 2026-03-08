@@ -547,38 +547,7 @@ Double fill (unlikely): only if deposited amount > sell order size
 
 ### Pre-load / Bootstrap Layer — Phase 2 Notes
 
-See HANDOFF.md for full bootstrap layer spec (principle, loading UX, caching strategy, implementation sketch).
-
-#### Metadata to pre-load per exchange (ExchangeWidget)
-
-| # | Field in `ExchangeMetadata` | Populates | Mock Source | Phase 2 Binance API | Notes |
-|---|---|---|---|---|---|
-| 1 | `tradingPairs` | Pair selector Autocomplete (index.tsx) | `mockAllTradingPairs` | `GET /api/v3/ticker/price` (~145KB) | **NOT** `/api/v3/exchangeInfo` — that's ~15MB, too heavy. `/ticker/price` returns all symbols with prices. Caveat: includes delisted pairs — requesting a delisted pair on other endpoints may return an error. Needs client-side filtering or validation. |
-| 2 | `depositInfo` | DepositTab asset/network Autocomplete, address display | `mockAllDepositInfo` | `GET /sapi/v1/capital/config/getall` → filter `depositAllEnable: true` | Returns all assets with their network configs. Extract deposit-enabled assets, then per-asset call `GET /sapi/v1/capital/deposit/address` for actual addresses. |
-| 3 | `withdrawInfo` | WithdrawTab asset/network Autocomplete, fee display | `mockAllWithdrawInfo` | `GET /sapi/v1/capital/config/getall` → filter `withdrawAllEnable: true` | Same endpoint as deposit — extract withdraw-enabled assets with network fees. |
-| 4 | `transferAssets` | TransferTab asset Autocomplete | `mockAllTransferAssets` | Derive from `GET /sapi/v1/capital/config/getall` | **No dedicated endpoint exists.** `POST /sapi/v1/asset/transfer` is the action endpoint (execute transfer), not a query. `GET /sapi/v1/asset/assetDetail` lacks transfer info. **Solution:** `/sapi/v1/capital/config/getall` returns all coins with a `trading: true/false` field — filter coins where `trading: true`. This is the same endpoint already fetched for deposit/withdraw info, so **no extra API call needed**. |
-| 5 | `isolatedMarginPairs` | TransferTab isolated pair selector | `mockAllIsolatedMarginPairs` | `GET /sapi/v1/margin/isolated/allPairs` | Returns `{ base, quote, symbol, isBuyAllowed, isSellAllowed, isMarginTrade }` per pair. [Docs](https://developers.binance.com/docs/margin_trading/market-data/Get-All-Isolated-Margin-Symbol) |
-| 6 | `crossMarginPairs` | MarginTab pair Autocomplete | `mockAllCrossMarginPairs` | `GET /sapi/v1/margin/allPairs` | Returns `{ base, quote, symbol, id, isBuyAllowed, isSellAllowed, isMarginTrade, delistTime? }` per pair. [Docs](https://developers.binance.com/docs/margin_trading/market-data/Get-All-Cross-Margin-Pairs) |
-| 7 | `pairInfo` | TransferTab asset filtering (base/quote lookup for isolated margin) | `mockAllPairInfo` | Derive from #5 + #6 responses | **No extra API call needed.** Both `/margin/isolated/allPairs` (#5) and `/margin/allPairs` (#6) return `base` and `quote` fields per pair. Build `pairInfo` map by merging these responses: `{ [symbol]: { base, quote } }`. If base/quote is ever needed for non-margin pairs, use `/api/v3/exchangeInfo?symbols=["SYM1","SYM2"]` to query specific symbols (the `symbols` param avoids the full 15MB response). |
-
-**API endpoint investigation status — all resolved:**
-- `tradingPairs`: Use `GET /api/v3/ticker/price` (~145KB). Caveat: includes delisted pairs.
-- `depositInfo` / `withdrawInfo`: Use `GET /sapi/v1/capital/config/getall`. Single call, filter by `depositAllEnable` / `withdrawAllEnable`.
-- `transferAssets`: Derive from same `/sapi/v1/capital/config/getall` response — filter coins where `trading: true`. No extra call.
-- `isolatedMarginPairs`: Use `GET /sapi/v1/margin/isolated/allPairs`. Returns base/quote per pair.
-- `crossMarginPairs`: Use `GET /sapi/v1/margin/allPairs`. Returns base/quote per pair.
-- `pairInfo`: Derive from #5 + #6 margin pair responses. No extra call. Fallback: `/api/v3/exchangeInfo?symbols=[...]` for specific non-margin pairs.
-
-**Effective API calls per exchange (Phase 2):** Only **4 actual HTTP requests** needed to populate all 7 metadata fields:
-
-| # | Endpoint | Provides |
-|---|---|---|
-| 1 | `GET /api/v3/ticker/price` | `tradingPairs` |
-| 2 | `GET /sapi/v1/capital/config/getall` | `depositInfo` + `withdrawInfo` + `transferAssets` (3 fields from 1 call) |
-| 3 | `GET /sapi/v1/margin/isolated/allPairs` | `isolatedMarginPairs` + contributes to `pairInfo` |
-| 4 | `GET /sapi/v1/margin/allPairs` | `crossMarginPairs` + contributes to `pairInfo` |
-
-Note: `/api/v3/exchangeInfo` supports `symbols`, `permissions`, and `symbolStatus` query params to reduce response size if ever needed for non-margin pair lookups.
+See [HANDOFF.md — Pre-load / Bootstrap Layer](./HANDOFF.md#pre-load--bootstrap-layer) for full spec: principle, loading UX, metadata table (with all 7 fields, mock sources, Binance API endpoints, and endpoint investigation notes), effective API call summary, caching strategy, and implementation sketch.
 
 #### Remaining Phase 2 migration steps
 
@@ -593,20 +562,7 @@ Steps 1-3 are already implemented in Phase 1. Remaining:
 
 ### SnsWidget — Phase 2 Notes
 
-See HANDOFF.md for full widget spec (architecture, data model, Phase 1 implementation, UX).
-
-#### API & Cost
-
-| Plan | Price | Streaming | Search | Rate Limit |
-|------|-------|-----------|--------|------------|
-| X API Free | $0 | No | No | 1,500 tweets/month write-only |
-| X API Basic | $100/mo | No | Yes (limited) | 10k reads/month |
-| X API Pro | $5,000/mo | **Yes** (filtered stream) | Yes (full archive) | 1M reads/month |
-| X API Enterprise | Custom | Yes (full firehose) | Yes | Custom |
-
-**Filtered Stream (Pro+)** is the target — rules like `from:caborek OR from:WuBlockchain OR #BTC` push matching tweets in real-time over a persistent HTTP connection. Basic tier only supports polling via search endpoint (15 req/15min), which adds 30-60s latency.
-
-**Alternative (cheaper):** Scraping/unofficial APIs (Nitter-style) — unreliable, breaks frequently. Not recommended for a trading tool.
+See [HANDOFF.md — SnsWidget](./HANDOFF.md#snswidget--real-time-sns-feed-twitterx) for full widget spec, API cost table, and Phase 1 implementation.
 
 #### Phase 2 data flow
 
@@ -625,18 +581,7 @@ X API Filtered Stream ──→ Rust (tokio, persistent HTTP) ──→ Tauri Ev
 
 ### NotificationWidget — Phase 2 Notes
 
-See HANDOFF.md for full widget spec (architecture, alert rule types, Phase 1 implementation, UX).
-
-#### Service Costs
-
-| Service | Cost | Setup |
-|---------|------|-------|
-| Telegram Bot API | Free | Create bot via @BotFather, user sends `/start` |
-| Twilio SMS | ~$0.0075/msg + $1/mo phone number | Account + verified number |
-| Twilio Voice | ~$0.013/min + $1/mo phone number | Same account, TwiML for call script |
-| AWS SNS (alternative) | $0.00645/SMS, $0.013/min voice | AWS account, IAM config |
-
-**Telegram is the primary channel** — free, instant, rich formatting (can include charts/screenshots). SMS and phone calls are escalation-only for critical alerts.
+See [HANDOFF.md — NotificationWidget](./HANDOFF.md#notificationwidget--strong-notification--alert-system) for full widget spec, service cost table, alert rule types, and Phase 1 implementation.
 
 #### Phase 2 data flow (Rust alert engine)
 
@@ -710,15 +655,7 @@ See HANDOFF.md for full widget spec (architecture, Phase 1 implementation, UX).
 - **Managed service** — Ably/Pusher handles scaling, ~$25/mo for 500 concurrent connections
 - **Matrix protocol** — decentralized, self-hostable, existing clients/servers, but heavier setup
 
-#### Channel Types
-
-| Channel | Access | Purpose |
-|---------|--------|---------|
-| `#general` | All WTS users | Global trollbox, market discussion |
-| `#alerts` | All WTS users | Automated: system-wide announcements, exchange outages |
-| `#<exchange>` | All WTS users | Per-exchange discussion (e.g., `#binance`, `#upbit`) |
-| Private channel | Invite-only | Team/friend coordination, strategy discussion |
-| DM | 1:1 | Direct messages between users |
+Channel types are defined in [HANDOFF.md — TrollBoxWidget](./HANDOFF.md#trollboxwidget--real-time-chat).
 
 ---
 
@@ -747,13 +684,7 @@ See HANDOFF.md for full widget spec (architecture, data model, Phase 1 implement
 - **Custom watchlist overlay**: highlight tiles for coins in user's portfolio
 - **Zoom**: click sector group to zoom into that sector only, back button to return
 
-#### Phase 2 Data Sources
-
-| Source | Cost | Coverage | Update Frequency |
-|--------|------|----------|-----------------|
-| CoinGecko `/coins/markets` | Free (30 req/min) | Top 250+ | Every 60s |
-| CoinMarketCap `/v1/cryptocurrency/listings/latest` | Free (333 req/day) | Top 200+ | Every 60s |
-| Binance `/api/v3/ticker/24hr` | Free | Binance-listed only | Real-time |
+Data sources and cost details are in [HANDOFF.md — HeatmapWidget](./HANDOFF.md#heatmapwidget--market-treemap-visualization).
 
 ---
 
@@ -805,25 +736,7 @@ See HANDOFF.md for full widget spec (architecture, data model, Phase 1 implement
 
 ### LiquidationWidget — Phase 2 Notes
 
-See HANDOFF.md for full widget spec (architecture, data model, Phase 1 implementation, UX).
-
-#### Phase 2 Data Sources
-
-| Source | Cost | Data |
-|--------|------|------|
-| CoinGlass API | Free tier limited, Pro $50/mo | Aggregated liquidation levels, OI |
-| Binance `GET /fapi/v1/openInterest` | Free | Per-pair OI |
-| Binance `GET /futures/data/openInterestHist` | Free | Historical OI |
-| Binance `GET /fapi/v1/forceOrders` | Free | Recent liquidation events |
-| Bybit `GET /v5/market/open-interest` | Free | Per-pair OI |
-| Hyblock Capital API | $99/mo | Detailed liquidation heatmap data |
-
-**Note on liquidation level estimation**: Exchanges don't publish exact liquidation levels. They're estimated by:
-1. Observing open interest changes at price levels
-2. Computing where positions at various leverage tiers would be liquidated given current OI
-3. Aggregating across exchanges
-
-CoinGlass and Hyblock do this estimation. Self-computing requires historical OI data + position leverage distribution assumptions.
+See [HANDOFF.md — LiquidationWidget](./HANDOFF.md#liquidationwidget--liquidation-level-map) for full widget spec, data source cost table, liquidation estimation notes, and Phase 1 implementation.
 
 ---
 
@@ -840,16 +753,7 @@ See HANDOFF.md for full widget spec (architecture, data model, Phase 1 implement
 - **Wallet tagging**: user can tag and track custom addresses
 - **Cross-reference**: whale deposit to exchange → check if price drops within 1h (correlation tracking)
 
-#### Phase 2 Data Sources
-
-| Source | Cost | Data | API |
-|--------|------|------|-----|
-| Whale Alert API | Free (10 req/min) | Large transactions >$500K | `GET /v1/transactions` |
-| Glassnode | Free tier limited, Advanced $39/mo | Exchange flows, NUPL, SOPR | REST API |
-| Arkham Intelligence | Free tier | Labeled wallets, entity tracking | REST API |
-| Nansen | $150/mo+ | Smart money flow, token god mode | REST API |
-| CryptoQuant | Free tier, Pro $49/mo | Exchange reserves, miner flows | REST API |
-| Direct RPC | Free (Alchemy/Infura) | Raw transaction monitoring | `eth_subscribe` |
+Data sources and cost details are in [HANDOFF.md — OnchainWidget](./HANDOFF.md#onchainwidget--on-chain-analytics).
 
 ---
 
