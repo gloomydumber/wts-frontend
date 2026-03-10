@@ -2138,38 +2138,50 @@ Build produces a single JS chunk (~1,344 kB min / 427 kB gzip). Vite warns at 50
 
 ---
 
-### BUG: Duplicate Upbit REST call causes 429 → cascading WebSocket failures (2026-03-10)
+### BUG: atomWithStorage flash-mount causes phantom widget initialization (2026-03-10)
 
-**Symptom:** On Vercel deployment (production bundle), Upbit rows in PremiumTable never render and Binance WebSocket immediately disconnects on initial page load. After ~30 seconds, if only PremiumTable is toggled on, it recovers. Local dev/preview do not exhibit this.
+**Severity:** Critical — root cause of cascading WebSocket/REST failures on Vercel deployment.
 
-**Observed network behavior:**
-1. `https://api.upbit.com/v1/market/all` is requested **twice** simultaneously — 1st returns 200, 2nd returns **429 Too Many Requests**
-2. `wss://api.upbit.com/websocket/v1` connects repeatedly but sends **no subscription message** (green status dot but no data)
-3. Binance WebSocket sends `{"method":"SUBSCRIBE","params":[],"id":1}` → rejected with `{"error":{"code":2,"msg":"Invalid request: streams must have non-zero length"}}`
+**Symptom:** On Vercel deployment, all `defaultVisible: true` widgets briefly mount on initial page load, even if the user has previously toggled them off. This triggers REST API calls, WebSocket connections, and subscription attempts from widgets that should not be active. Widgets that were toggled off then immediately unmount once localStorage hydration completes, producing "WebSocket is closed before the connection is established" errors in DevTools.
 
-**Root cause chain:**
+**Root cause:** Jotai's `atomWithStorage` reads localStorage **asynchronously**. On the first render frame, the atom returns its **default value** (from `WIDGET_REGISTRY` `defaultVisible` flags). React renders all `defaultVisible: true` widgets. Then the persisted value loads from localStorage, React re-renders, and widgets that should be hidden unmount — but their side effects (REST fetches, WebSocket connections) have already fired.
+
+**Affected widgets on flash-mount (7 total):**
+- Console, Cex, Dex, Orderbook, PremiumTable, Chart, ExchangeCalc (all `defaultVisible: true` in `src/layout/defaults.ts`)
+
+**Cascade — how this causes the Upbit/Binance failures:**
 
 | Step | What happens | Why |
 |------|-------------|-----|
-| 1 | Both `@gloomydumber/premium-table` and `@gloomydumber/crypto-orderbook` independently call `fetch("https://api.upbit.com/v1/market/all")` on mount | No shared cache — each package has its own module-level ticker fetch |
-| 2 | On Vercel production bundle, both widgets mount in the same frame → two simultaneous requests | Local dev has enough execution stagger; production bundle executes all mounts at once |
-| 3 | Upbit rate-limits the 2nd request → **429** | Upbit's REST API rate limit for unauthenticated clients |
-| 4 | The package that gets 429 returns **empty ticker array** | Error handler in `fetchAvailableTickers()` returns `[]` on failure |
-| 5 | PremiumTable computes `commonTickers = intersection(upbitTickers, binanceTickers)` → **empty** (because upbitTickers is `[]`) | No tickers → no subscription codes |
-| 6 | Upbit WebSocket subscription has empty `codes` array → connects but receives nothing | Green dot (connected) but no data rendered |
-| 7 | Binance WebSocket subscription has empty `params` array → `{"method":"SUBSCRIBE","params":[],"id":1}` | Binance rejects: streams must have non-zero length |
+| 1 | All 7 default-visible widgets mount in the first render frame | `atomWithStorage` returns defaults before localStorage hydrates |
+| 2 | Both `@gloomydumber/premium-table` and `@gloomydumber/crypto-orderbook` independently call `fetch("https://api.upbit.com/v1/market/all")` | No shared cache — each package has its own module-level ticker fetch |
+| 3 | ChartWidget's `useKlineStream` opens `wss://stream.binance.com` with `btcusdt@kline_4h` | Chart mounts with default config (Binance/BTC/USDT/4h) |
+| 4 | localStorage hydrates → hidden widgets unmount → WebSocket cleanup fires | "WebSocket is closed before the connection is established" |
+| 5 | Upbit rate-limits the 2nd `market/all` request → **429 Too Many Requests** | Two simultaneous requests from same client |
+| 6 | The package that gets 429 returns **empty ticker array** | Error handler in `fetchAvailableTickers()` returns `[]` on failure |
+| 7 | PremiumTable computes `commonTickers = intersection(upbitTickers, binanceTickers)` → **empty** | No tickers → no subscription codes |
+| 8 | Upbit WebSocket subscription has empty `codes` array → connects but receives nothing | Green dot (connected) but no data rendered |
+| 9 | Binance WebSocket subscription has empty `params` array → `{"method":"SUBSCRIBE","params":[],"id":1}` | Binance rejects: `"streams must have non-zero length"` |
 
-**Fix required (Phase 1 — npm packages, not wts-frontend):**
+**Why it works locally but not on Vercel:** Unclear. Same production bundle (`npm run preview`), same browser, same IP, even in incognito mode — the issue does not reproduce locally. Possibly browser-level fetch deduplication or subtle timing differences in JavaScript execution between localhost and CDN-served bundles.
 
-The fix belongs in `@gloomydumber/premium-table` and `@gloomydumber/crypto-orderbook`:
+**Fix required (Phase 1 — two layers):**
 
-1. **Retry on 429 with backoff** — instead of returning empty array on REST failure, retry with exponential backoff (e.g., 1s, 2s, 4s)
-2. **Deduplicate the `market/all` call** — shared singleton cache or coordinated fetch so only one request is made even when both packages mount simultaneously
-3. **Guard WebSocket subscription** — do not send subscription message with empty codes/params; wait for valid ticker data before connecting
+**Layer 1: wts-frontend — block rendering until hydration completes**
+- Do not render any widgets until `atomWithStorage` has loaded persisted values from localStorage
+- Options: hydration gate component, `useHydrateAtoms`, or `onMount` callback to detect when storage values are ready
+- This eliminates the flash-mount entirely — no phantom REST/WebSocket calls
 
-**Scope clarification:** This was initially considered a Phase 2 (Tauri backend) concern, but it is a **Phase 1 bug** — the affected code is in the npm packages that are already live and deployed. The Tauri backend will eventually centralize API calls, but the packages must be independently robust.
+**Layer 2: npm packages — defensive hardening**
+- **Retry on 429 with backoff** — instead of returning empty array on REST failure, retry with exponential backoff (e.g., 1s, 2s, 4s)
+- **Deduplicate the `market/all` call** — shared singleton cache or coordinated fetch so only one request is made even when both packages mount simultaneously
+- **Guard WebSocket subscription** — do not send subscription message with empty codes/params; wait for valid ticker data before connecting
 
-**Affected packages:**
+Layer 1 is the primary fix (prevents the problem). Layer 2 is defensive (makes the packages robust even if flash-mount occurs).
+
+**Affected code:**
+- `src/store/atoms.ts` — `widgetVisibilityAtom` uses `atomWithStorage` with sync default fallback
+- `src/layout/defaults.ts` — `WIDGET_REGISTRY` `defaultVisible` flags
 - `@gloomydumber/premium-table` — `fetchAvailableTickers()` in upbitAdapter
 - `@gloomydumber/crypto-orderbook` — `fetchAvailablePairs()` in upbit adapter
 
