@@ -2179,6 +2179,12 @@ Build produces a single JS chunk (~1,344 kB min / 427 kB gzip). Vite warns at 50
 
 Layer 1 is the primary fix (prevents the problem). Layer 2 is defensive (makes the packages robust even if flash-mount occurs).
 
+**Why Vercel triggers the bug but `npm run preview` does not (same production bundle):**
+
+The app builds into a **single JS chunk** (`index-*.js`, 1,590 KB / 501 KB gzipped). On localhost (`npm run preview`), this file loads from disk in ~1-2ms — both `market/all` fetches fire so close together that the browser likely **deduplicates them at the HTTP layer** (same URL, same frame, pending request reuse). On Vercel, the file is served from a CDN over the network. The browser parses and executes JS progressively as it arrives, creating a timing gap between the two widget mounts. The gap is long enough that Upbit's rate limiter sees two distinct requests, but short enough that the second arrives within the rate-limit window → 429.
+
+This means the **single-chunk bundle is a contributing factor**. Code-splitting (e.g., `manualChunks` in Vite/Rollup config) could change the timing, though it's not a reliable fix on its own — the hydration gate (Layer 1) is the proper solution.
+
 **Affected code:**
 - `src/store/atoms.ts` — `widgetVisibilityAtom` uses `atomWithStorage` with sync default fallback
 - `src/layout/defaults.ts` — `WIDGET_REGISTRY` `defaultVisible` flags
