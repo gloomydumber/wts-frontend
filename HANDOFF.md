@@ -2138,58 +2138,87 @@ Build produces a single JS chunk (~1,344 kB min / 427 kB gzip). Vite warns at 50
 
 ---
 
-### BUG: atomWithStorage flash-mount causes phantom widget initialization (2026-03-10)
+### BUG: Upbit Origin-based rate limiting + atomWithStorage flash-mount → cascading failures on Vercel (2026-03-11)
 
-**Severity:** Critical — root cause of cascading WebSocket/REST failures on Vercel deployment.
+**Severity:** Critical — live widgets (PremiumTable, Orderbook) do not load on Vercel deployment.
 
-**Symptom:** On Vercel deployment, all `defaultVisible: true` widgets briefly mount on initial page load, even if the user has previously toggled them off. This triggers REST API calls, WebSocket connections, and subscription attempts from widgets that should not be active. Widgets that were toggled off then immediately unmount once localStorage hydration completes, producing "WebSocket is closed before the connection is established" errors in DevTools.
+**Issues involved:**
+1. **Upbit Origin-based rate limiting** — Upbit applies `group=origin` (1 req/10s) to any request with a non-localhost `Origin` header, making client-side `fetch()` unviable in production
+2. **`atomWithStorage` flash-mount (wts-frontend)** — Jotai's async localStorage hydration causes all `defaultVisible: true` widgets to mount in the first frame, firing phantom REST/WebSocket calls before the persisted visibility state loads
+3. **Orderbook default exchange (`@gloomydumber/crypto-orderbook`)** — `atomWithStorage("cob-exchange", "upbit")` defaults to Upbit, causing a phantom Upbit WebSocket connection on every page refresh before localStorage hydrates the user's actual selection
+4. **PremiumTable ungated WebSocket (`@gloomydumber/premium-table`)** — Binance WebSocket subscription fires before the `market/all` REST response returns, sending empty `params` → Binance rejects with "streams must have non-zero length"
+5. **Duplicate `market/all` REST call** — Both `premium-table` and `crypto-orderbook` independently call `https://api.upbit.com/v1/market/all` on mount with no shared cache or deduplication
 
-**Root cause:** Jotai's `atomWithStorage` reads localStorage **asynchronously**. On the first render frame, the atom returns its **default value** (from `WIDGET_REGISTRY` `defaultVisible` flags). React renders all `defaultVisible: true` widgets. Then the persisted value loads from localStorage, React re-renders, and widgets that should be hidden unmount — but their side effects (REST fetches, WebSocket connections) have already fired.
+#### Definitive Root Cause: Upbit's Origin-based Rate Limiting
 
-**Affected widgets on flash-mount (7 total):**
-- Console, Cex, Dex, Orderbook, PremiumTable, Chart, ExchangeCalc (all `defaultVisible: true` in `src/layout/defaults.ts`)
+Upbit's official policy ([changelog](https://docs.upbit.com/changelog)): **when a request includes an `Origin` header, rate limits are severely restricted — 1 request per 10 seconds** (`group=origin`).
 
-**Cascade — how this causes the Upbit/Binance failures:**
+Browser `fetch()` always includes the `Origin` header. Measured `Remaining-Req` response headers:
+
+| Environment | Origin Header | Rate-Limit Group | Budget |
+|---|---|---|---|
+| `localhost:4173` | `http://localhost:4173` | `group=market` | **600/min, 9/sec** |
+| `wts-frontend.vercel.app` | `https://wts-frontend.vercel.app` | `group=origin` | **6/min, ~0.1/sec (1 per 10s)** |
+
+Localhost is either exempted or falls into the permissive `market` group. Any non-localhost web origin gets the `origin` group with 1 request per 10 seconds. This is Upbit's anti-scraping policy — their public API is designed for server-to-server calls, not browser-based consumption.
+
+**This means client-side `fetch()` to Upbit REST APIs is fundamentally unviable in production deployments.** Even a single `market/all` call consumes the entire 10-second budget. Two packages calling it simultaneously guarantees a 429.
+
+#### Contributing Factor: atomWithStorage Flash-Mount
+
+Jotai's `atomWithStorage` reads localStorage **asynchronously**. On the first render frame, the atom returns its **default value** (from `WIDGET_REGISTRY` `defaultVisible` flags). React renders all `defaultVisible: true` widgets (7 total: Console, Cex, Dex, Orderbook, PremiumTable, Chart, ExchangeCalc). Then the persisted value loads from localStorage, React re-renders, and widgets the user previously hid get unmounted — but their side effects (REST fetches, WebSocket connections) have already fired.
+
+This flash-mount happens on **both localhost and Vercel**, producing "WebSocket is closed before the connection is established" in DevTools. On localhost it's harmless (600/min budget absorbs it). On Vercel it compounds the rate-limit problem.
+
+#### Observed Failure Cascade (Vercel)
 
 | Step | What happens | Why |
 |------|-------------|-----|
 | 1 | All 7 default-visible widgets mount in the first render frame | `atomWithStorage` returns defaults before localStorage hydrates |
-| 2 | Both `@gloomydumber/premium-table` and `@gloomydumber/crypto-orderbook` independently call `fetch("https://api.upbit.com/v1/market/all")` | No shared cache — each package has its own module-level ticker fetch |
-| 3 | ChartWidget's `useKlineStream` opens `wss://stream.binance.com` with `btcusdt@kline_4h` | Chart mounts with default config (Binance/BTC/USDT/4h) |
-| 4 | localStorage hydrates → hidden widgets unmount → WebSocket cleanup fires | "WebSocket is closed before the connection is established" |
-| 5 | Upbit rate-limits the 2nd `market/all` request → **429 Too Many Requests** | Two simultaneous requests from same client |
-| 6 | The package that gets 429 returns **empty ticker array** | Error handler in `fetchAvailableTickers()` returns `[]` on failure |
-| 7 | PremiumTable computes `commonTickers = intersection(upbitTickers, binanceTickers)` → **empty** | No tickers → no subscription codes |
-| 8 | Upbit WebSocket subscription has empty `codes` array → connects but receives nothing | Green dot (connected) but no data rendered |
-| 9 | Binance WebSocket subscription has empty `params` array → `{"method":"SUBSCRIBE","params":[],"id":1}` | Binance rejects: `"streams must have non-zero length"` |
+| 2 | `@gloomydumber/premium-table` and `@gloomydumber/crypto-orderbook` both call `fetch("https://api.upbit.com/v1/market/all")` | No shared cache — each package fetches independently |
+| 3 | PremiumTable connects Binance WebSocket **before** `market/all` returns | WebSocket init is not gated on REST response — sends `{"method":"SUBSCRIBE","params":[],"id":1}` as the very first network request |
+| 4 | Binance rejects empty subscription | `{"error":{"code":2,"msg":"Invalid request: streams must have non-zero length"}}` |
+| 5 | ChartWidget's `useKlineStream` opens `wss://stream.binance.com` with `btcusdt@kline_4h` | Chart mounts with default config (Binance/BTC/USDT/4h) |
+| 6 | localStorage hydrates → hidden widgets unmount → WebSocket cleanup fires | "WebSocket is closed before the connection is established" |
+| 7 | Upbit returns 429 for 2nd `market/all` request (sometimes both) | `group=origin` — 1 request per 10 seconds budget exceeded |
+| 8 | Package receiving 429 returns **empty ticker array** | Error handler in `fetchAvailableTickers()` returns `[]` |
+| 9 | PremiumTable: `commonTickers = intersection(upbitTickers, binanceTickers)` → **empty** | No tickers → empty subscription codes for both Upbit and Binance WebSocket |
+| 10 | Upbit WebSocket connects but receives no data | Green status dot (connected) but no rows rendered |
+| 11 | Orderbook: falls back to default Upbit subscription (`KRW-BTC.30`) regardless of selected exchange | Receives unused Upbit orderbook stream — wasted bandwidth (Vercel only) |
 
-**Why it works locally but not on Vercel:** Unclear. Same production bundle (`npm run preview`), same browser, same IP, even in incognito mode — the issue does not reproduce locally. Possibly browser-level fetch deduplication or subtle timing differences in JavaScript execution between localhost and CDN-served bundles.
+#### Observed Network Timing
 
-**Fix required (Phase 1 — two layers):**
+Both environments fire two `market/all` requests with similar gaps (~78-105ms). The difference is purely the rate-limit tier:
 
-**Layer 1: wts-frontend — block rendering until hydration completes**
+| Environment | 1st Request | 2nd Request | Gap |
+|---|---|---|---|
+| localhost | 200 | 200 | ~105ms |
+| Vercel | 200 or 429 | **429 always** | ~78ms |
+
+#### Fix Required (Phase 1 — three layers)
+
+**Layer 1 (primary): Backend proxy for Upbit REST APIs**
+- Client-side `fetch()` to Upbit is unviable due to Origin-based rate limiting
+- For Vercel deployment: add a Vercel serverless function (`/api/upbit/market-all`) that proxies the request server-side (no `Origin` header → `group=market` tier)
+- For Phase 2: Tauri/Rust backend handles all exchange API calls natively
+
+**Layer 2: wts-frontend — block rendering until hydration completes**
 - Do not render any widgets until `atomWithStorage` has loaded persisted values from localStorage
 - Options: hydration gate component, `useHydrateAtoms`, or `onMount` callback to detect when storage values are ready
-- This eliminates the flash-mount entirely — no phantom REST/WebSocket calls
+- Eliminates flash-mount — no phantom REST/WebSocket calls from hidden widgets
 
-**Layer 2: npm packages — defensive hardening**
-- **Retry on 429 with backoff** — instead of returning empty array on REST failure, retry with exponential backoff (e.g., 1s, 2s, 4s)
-- **Deduplicate the `market/all` call** — shared singleton cache or coordinated fetch so only one request is made even when both packages mount simultaneously
-- **Guard WebSocket subscription** — do not send subscription message with empty codes/params; wait for valid ticker data before connecting
-
-Layer 1 is the primary fix (prevents the problem). Layer 2 is defensive (makes the packages robust even if flash-mount occurs).
-
-**Why Vercel triggers the bug but `npm run preview` does not (same production bundle):**
-
-The app builds into a **single JS chunk** (`index-*.js`, 1,590 KB / 501 KB gzipped). On localhost (`npm run preview`), this file loads from disk in ~1-2ms — both `market/all` fetches fire so close together that the browser likely **deduplicates them at the HTTP layer** (same URL, same frame, pending request reuse). On Vercel, the file is served from a CDN over the network. The browser parses and executes JS progressively as it arrives, creating a timing gap between the two widget mounts. The gap is long enough that Upbit's rate limiter sees two distinct requests, but short enough that the second arrives within the rate-limit window → 429.
-
-This means the **single-chunk bundle is a contributing factor**. Code-splitting (e.g., `manualChunks` in Vite/Rollup config) could change the timing, though it's not a reliable fix on its own — the hydration gate (Layer 1) is the proper solution.
+**Layer 3: npm packages — defensive hardening**
+- **Retry on 429 with backoff** — instead of returning empty array on REST failure, retry with exponential backoff
+- **Deduplicate the `market/all` call** — shared singleton cache across packages
+- **Guard WebSocket subscription** — do not connect or send subscription message with empty codes/params; wait for valid ticker data
+- **Orderbook**: do not maintain Upbit WebSocket connection when displaying a different exchange
+- **Orderbook `atomWithStorage` default** — `@gloomydumber/crypto-orderbook` uses `atomWithStorage("cob-exchange", "upbit")` internally, meaning the default exchange is Upbit. On every page refresh, the component mounts with `"upbit"` before localStorage hydrates the user's actual selection → fires Upbit REST + WebSocket → then switches to the persisted exchange. This causes a phantom Upbit connection on every refresh (visible as "WebSocket is closed before the connection is established" in DevTools), wastes Upbit API budget, and on Vercel the connection sometimes fails to clean up properly (lingering unused Upbit orderbook stream). **Fix:** the default should be `null`/empty — no exchange selected, no connection attempted — until `atomWithStorage` hydrates from localStorage. On first-ever visit (no persisted value), the user selects an exchange from the UI before any connection is made.
 
 **Affected code:**
 - `src/store/atoms.ts` — `widgetVisibilityAtom` uses `atomWithStorage` with sync default fallback
 - `src/layout/defaults.ts` — `WIDGET_REGISTRY` `defaultVisible` flags
-- `@gloomydumber/premium-table` — `fetchAvailableTickers()` in upbitAdapter
-- `@gloomydumber/crypto-orderbook` — `fetchAvailablePairs()` in upbit adapter
+- `@gloomydumber/premium-table` — `fetchAvailableTickers()` in upbitAdapter, WebSocket init sequence
+- `@gloomydumber/crypto-orderbook` — `fetchAvailablePairs()` in upbit adapter, `atomWithStorage("cob-exchange", "upbit")` default, exchange-independent Upbit connection
 
 ---
 
