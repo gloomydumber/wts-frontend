@@ -6,19 +6,42 @@ import type { DexWalletsState, DexSettings } from '../components/widgets/DexWidg
 import type { TotpEntry } from '../components/widgets/TotpWidget/types'
 
 // Layout state — persisted to localStorage
-export const layoutsAtom = atomWithStorage<Layouts>('layouts', defaultLayouts)
+// Sync hydration: same pattern as widgetVisibilityAtom to avoid layout flash
+function getHydratedLayouts(): Layouts {
+  try {
+    const stored = localStorage.getItem('layouts')
+    if (stored) return JSON.parse(stored) as Layouts
+  } catch { /* corrupted localStorage — use defaults */ }
+  return defaultLayouts
+}
+export const layoutsAtom = atomWithStorage<Layouts>('layouts', getHydratedLayouts())
 
 // Current breakpoint
 export const currentBreakpointAtom = atom<string>('lg')
 
 // Widget visibility — persisted to localStorage
+// Hydration gate: read persisted value synchronously at module init.
+// This prevents the flash-mount issue where atomWithStorage returns defaults
+// on the first render frame (before async hydration), causing all defaultVisible
+// widgets to mount and fire REST/WebSocket calls for widgets the user had hidden.
 const defaultVisibility: Record<string, boolean> = {}
 for (const widget of WIDGET_REGISTRY) {
   defaultVisibility[widget.id] = widget.defaultVisible ?? false
 }
+function getHydratedVisibility(): Record<string, boolean> {
+  try {
+    const stored = localStorage.getItem('widgetVisibility')
+    if (stored) {
+      const parsed = JSON.parse(stored) as Record<string, boolean>
+      // Merge: persisted values override defaults, new widgets get defaults
+      return { ...defaultVisibility, ...parsed }
+    }
+  } catch { /* corrupted localStorage — use defaults */ }
+  return defaultVisibility
+}
 export const widgetVisibilityAtom = atomWithStorage<Record<string, boolean>>(
   'widgetVisibility',
-  defaultVisibility,
+  getHydratedVisibility(),
 )
 
 // Theme — persisted to localStorage

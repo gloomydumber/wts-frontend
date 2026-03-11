@@ -2243,9 +2243,11 @@ Both environments fire two `market/all` requests with similar gaps (~78-105ms). 
 - In-flight dedup → concurrent widget mounts get same Promise, no duplicate requests
 - Future widgets reuse the same cache → no additional API pressure
 
+**Layer 2 fix (hydration gate, same session):**
+- `src/store/atoms.ts` — `widgetVisibilityAtom` and `layoutsAtom` now read persisted values synchronously from localStorage at module init time via `getHydratedVisibility()` / `getHydratedLayouts()`. The atom's initial value already reflects the user's saved state — no async delay, no flash-mount, no phantom widget mount/unmount cycle.
+
 **Remaining items (not yet fixed):**
-- Layer 2 (hydration gate) — `atomWithStorage` flash-mount still occurs. Shared data mitigates the duplicate call, but phantom mount/unmount cycle still happens.
-- Orderbook `atomWithStorage` default — still defaults to Upbit, causing phantom connection on refresh.
+- Orderbook `atomWithStorage` default — still defaults to Upbit internally in `@gloomydumber/crypto-orderbook`, causing phantom Upbit connection on refresh before localStorage hydrates the user's exchange selection.
 
 ---
 
