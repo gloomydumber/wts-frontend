@@ -8,9 +8,13 @@ import { darkTheme, lightTheme } from './styles/theme'
 import GlobalStyles from './styles/GlobalStyles'
 import AppBar from './presenter/AppBar'
 import GridLayout from './layout/GridLayout'
+import { useSharedMarketData } from './hooks/useSharedMarketData'
 
 export default function App() {
   const isDark = useAtomValue(isDarkAtom)
+
+  // Initialize shared market data (ConnectionManager) on startup
+  useSharedMarketData()
 
   return (
     <ThemeProvider theme={isDark ? darkTheme : lightTheme}>

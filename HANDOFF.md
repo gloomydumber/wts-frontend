@@ -2220,6 +2220,33 @@ Both environments fire two `market/all` requests with similar gaps (~78-105ms). 
 - `@gloomydumber/premium-table` — `fetchAvailableTickers()` in upbitAdapter, WebSocket init sequence
 - `@gloomydumber/crypto-orderbook` — `fetchAvailablePairs()` in upbit adapter, `atomWithStorage("cob-exchange", "upbit")` default, exchange-independent Upbit connection
 
+#### Fix Applied (2026-03-11): Connection Orchestration Layer
+
+**Approach:** Instead of a backend proxy, implemented a frontend connection orchestration layer that deduplicates REST calls across widgets. Both npm packages received new optional props for host-provided market data, keeping standalone mode fully backwards compatible.
+
+**npm package changes:**
+- `@gloomydumber/crypto-orderbook` v0.4.0 — new `availablePairs?: string[]` prop. When provided, skips internal `fetchAvailablePairs()` REST call.
+- `@gloomydumber/premium-table` v0.6.0 — new `availableMarkets?: { tickers: string[], prices?: Map<string, number> }` prop. When provided, skips internal `fetchAvailableTickers()` + `getCachedPrices()`.
+
+**wts-frontend changes:**
+- `src/services/MarketDataClient.ts` — fetch wrapper with retry (exponential backoff), in-flight request deduplication, TTL cache, 429/5xx retry logic. For public market data only — user actions (order, withdraw, etc.) are fire-once with no retry.
+- `src/services/ConnectionManager.ts` — singleton orchestrator: parses exchange-specific responses (Upbit, Binance, Bithumb, Bybit, OKX, Coinbase), provides `fetchTickers()`, `fetchPremiumTableMarkets()`, `fetchOrderbookPairs()`.
+- `src/store/marketDataAtoms.ts` — shared Jotai atoms (`premiumTableMarketsAtom`, `exchangeTickersAtom`, `marketDataReadyAtom`).
+- `src/hooks/useSharedMarketData.ts` — init hook called in App.tsx, fetches shared data on startup.
+- `src/components/widgets/PremiumTableWidget/index.tsx` — passes `availableMarkets` from shared atom.
+- `src/components/widgets/OrderbookWidget/index.tsx` — passes `availablePairs` from ConnectionManager.
+- `src/App.tsx` — calls `useSharedMarketData()`.
+
+**What this fixes:**
+- Upbit `market/all` now called once (shared cache), not twice → eliminates 429 on Vercel
+- Retry with exponential backoff on 429/5xx/network errors → resilient to transient failures
+- In-flight dedup → concurrent widget mounts get same Promise, no duplicate requests
+- Future widgets reuse the same cache → no additional API pressure
+
+**Remaining items (not yet fixed):**
+- Layer 2 (hydration gate) — `atomWithStorage` flash-mount still occurs. Shared data mitigates the duplicate call, but phantom mount/unmount cycle still happens.
+- Orderbook `atomWithStorage` default — still defaults to Upbit, causing phantom connection on refresh.
+
 ---
 
 ## Skills (`.claude/skills/`)
