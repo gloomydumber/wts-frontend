@@ -6,19 +6,13 @@
  */
 
 import { atom } from 'jotai'
-import type { MarketTickers } from '../services/ConnectionManager'
-
-/** Shared data for PremiumTable (Upbit KRW ∩ Binance USDT) */
-export const premiumTableMarketsAtom = atom<{
-  tickers: string[]
-  prices: Map<string, number>
-} | null>(null)
 
 /**
- * Per-exchange ticker data, keyed by "exchangeId:quoteCurrency".
- * Used by OrderbookWidget to get available pairs for the selected exchange.
+ * Raw REST responses for PremiumTable, keyed by exchange ID.
+ * e.g. { upbit: [...], binance: [...] }
+ * Passed directly to premium-table — adapters handle parsing internally.
  */
-export const exchangeTickersAtom = atom<Record<string, MarketTickers>>({})
+export const premiumTableRawDataAtom = atom<Record<string, unknown> | null>(null)
 
 /** Whether the initial shared market data fetch has completed. */
 export const marketDataReadyAtom = atom<boolean>(false)

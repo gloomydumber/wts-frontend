@@ -2226,14 +2226,14 @@ Both environments fire two `market/all` requests with similar gaps (~78-105ms). 
 
 **npm package changes:**
 - `@gloomydumber/crypto-orderbook` v0.4.0 — new `availablePairs?: string[]` prop. When provided, skips internal `fetchAvailablePairs()` REST call.
-- `@gloomydumber/premium-table` v0.6.0 — new `availableMarkets?: { tickers: string[], prices?: Map<string, number> }` prop. When provided, skips internal `fetchAvailableTickers()` + `getCachedPrices()`.
+- `@gloomydumber/premium-table` v0.7.0 — new `availableMarkets?: { rawResponses: Record<string, unknown> }` prop. Passes raw REST JSON to adapters — all normalization (BEAMX→BEAM), filtering (delisted/halted), and caching handled internally via `parseRawTickerData()`. Breaking change from v0.6.0's `{ tickers, prices? }` format.
 
 **wts-frontend changes:**
 - `src/services/MarketDataClient.ts` — fetch wrapper with retry (exponential backoff), in-flight request deduplication, TTL cache, 429/5xx retry logic. For public market data only — user actions (order, withdraw, etc.) are fire-once with no retry.
-- `src/services/ConnectionManager.ts` — singleton orchestrator: parses exchange-specific responses (Upbit, Binance, Bithumb, Bybit, OKX, Coinbase), provides `fetchTickers()`, `fetchPremiumTableMarkets()`, `fetchOrderbookPairs()`.
-- `src/store/marketDataAtoms.ts` — shared Jotai atoms (`premiumTableMarketsAtom`, `exchangeTickersAtom`, `marketDataReadyAtom`).
-- `src/hooks/useSharedMarketData.ts` — init hook called in App.tsx, fetches shared data on startup.
-- `src/components/widgets/PremiumTableWidget/index.tsx` — passes `availableMarkets` from shared atom.
+- `src/services/ConnectionManager.ts` — fetches raw exchange REST responses (no parsing/normalization). Provides `fetchRawExchangeData()`, `fetchPremiumTableRawData()`, `fetchOrderbookPairs()`.
+- `src/store/marketDataAtoms.ts` — shared Jotai atoms (`premiumTableRawDataAtom`, `marketDataReadyAtom`).
+- `src/hooks/useSharedMarketData.ts` — init hook called in App.tsx, fetches raw data on startup, stores as `{ upbit, binance }`.
+- `src/components/widgets/PremiumTableWidget/index.tsx` — passes `{ rawResponses: rawData }` from shared atom.
 - `src/components/widgets/OrderbookWidget/index.tsx` — passes `availablePairs` from ConnectionManager.
 - `src/App.tsx` — calls `useSharedMarketData()`.
 
@@ -2248,6 +2248,27 @@ Both environments fire two `market/all` requests with similar gaps (~78-105ms). 
 
 **Remaining items (not yet fixed):**
 - Orderbook `atomWithStorage` default — still defaults to Upbit internally in `@gloomydumber/crypto-orderbook`, causing phantom Upbit connection on refresh before localStorage hydrates the user's exchange selection.
+
+**Open decision: Binance shared endpoint — `/api/v3/exchangeInfo` vs `/api/v3/ticker/price`**
+
+Both premium-table and crypto-orderbook need Binance ticker lists. Plan is to fetch once via ConnectionManager (cached, deduplicated) and share across widgets.
+
+| | `/exchangeInfo` | `/ticker/price` |
+|---|---|---|
+| Response size | ~3-4MB | ~100KB |
+| Has `status: "TRADING"` | Yes — naturally filters dead pairs (BEAM vs BEAMX) | No — includes stale/halted symbols |
+| Has prices | No | Yes — premium-table can seed rows immediately |
+| Has `baseAsset`/`quoteAsset` | Yes — clean field extraction | No — requires suffix-stripping |
+| Has tick size filters | Yes — orderbook could skip per-symbol REST call | No |
+| Orderbook standalone already uses | Yes (`fetchAvailablePairs`) | No |
+
+If `exchangeInfo`: premium-table loses Binance REST price seeding → rows show "---" for ~1-2s until WS connects. Standalone mode unaffected (keeps its own fetch). `parseRawTickerData` must handle both formats (host vs standalone).
+
+If both endpoints: best data, but 2 requests per Binance.
+
+Cache invalidation plan (applies regardless of endpoint choice):
+- Hard refresh (Ctrl+Shift+R) → page reload → in-memory cache cleared → fresh fetch (already works)
+- Manual widget refresh button → call `invalidateCache()` on MarketDataClient then re-fetch
 
 ---
 

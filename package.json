@@ -15,7 +15,7 @@
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@gloomydumber/crypto-exchange-rate-calculator": "^0.0.5",
     "@gloomydumber/crypto-orderbook": "^0.4.0",
-    "@gloomydumber/premium-table": "^0.6.0",
+    "@gloomydumber/premium-table": "^0.7.0",
     "@mui/icons-material": "^7.3.8",
     "@mui/material": "^7.3.8",
     "@scure/bip32": "^2.0.1",

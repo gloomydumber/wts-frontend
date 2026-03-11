@@ -1,18 +1,18 @@
 /**
  * useSharedMarketData — initializes shared market data on app startup.
  *
- * Fetches common tickers/prices via ConnectionManager once,
+ * Fetches raw REST responses via ConnectionManager once,
  * stores in Jotai atoms for widgets to consume via props.
  * Call once in App.tsx.
  */
 
 import { useEffect, useRef } from 'react'
 import { useSetAtom } from 'jotai'
-import { premiumTableMarketsAtom, marketDataReadyAtom } from '../store/marketDataAtoms'
-import { fetchPremiumTableMarkets } from '../services/ConnectionManager'
+import { premiumTableRawDataAtom, marketDataReadyAtom } from '../store/marketDataAtoms'
+import { fetchPremiumTableRawData } from '../services/ConnectionManager'
 
 export function useSharedMarketData() {
-  const setPremiumTableMarkets = useSetAtom(premiumTableMarketsAtom)
+  const setPremiumTableRawData = useSetAtom(premiumTableRawDataAtom)
   const setMarketDataReady = useSetAtom(marketDataReadyAtom)
   const didFetchRef = useRef(false)
 
@@ -22,10 +22,10 @@ export function useSharedMarketData() {
 
     const controller = new AbortController()
 
-    fetchPremiumTableMarkets(controller.signal)
-      .then(markets => {
+    fetchPremiumTableRawData(controller.signal)
+      .then(({ upbitData, binanceData }) => {
         if (controller.signal.aborted) return
-        setPremiumTableMarkets(markets)
+        setPremiumTableRawData({ upbit: upbitData, binance: binanceData })
         setMarketDataReady(true)
       })
       .catch(() => {
@@ -36,5 +36,5 @@ export function useSharedMarketData() {
       })
 
     return () => controller.abort()
-  }, [setPremiumTableMarkets, setMarketDataReady])
+  }, [setPremiumTableRawData, setMarketDataReady])
 }

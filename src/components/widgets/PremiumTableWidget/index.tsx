@@ -4,7 +4,7 @@ import type { AvailableMarkets } from '@gloomydumber/premium-table'
 import '@gloomydumber/premium-table/style.css'
 import { useTheme } from '@mui/material/styles'
 import { useAtomValue } from 'jotai'
-import { premiumTableMarketsAtom } from '../../../store/marketDataAtoms'
+import { premiumTableRawDataAtom } from '../../../store/marketDataAtoms'
 
 /** Measure pixel height of a DOM element via callback ref + ResizeObserver. */
 function useContainerHeight() {
@@ -34,16 +34,13 @@ function useContainerHeight() {
 export default function PremiumTableWidget() {
   const theme = useTheme()
   const { ref, height } = useContainerHeight()
-  const sharedMarkets = useAtomValue(premiumTableMarketsAtom)
+  const rawData = useAtomValue(premiumTableRawDataAtom)
 
-  // Build availableMarkets prop from shared data (or undefined for standalone fallback)
+  // Pass raw REST responses — premium-table's adapters handle normalization internally
   const availableMarkets: AvailableMarkets | undefined = useMemo(() => {
-    if (!sharedMarkets || sharedMarkets.tickers.length === 0) return undefined
-    return {
-      tickers: sharedMarkets.tickers,
-      prices: sharedMarkets.prices,
-    }
-  }, [sharedMarkets])
+    if (!rawData) return undefined
+    return { rawResponses: rawData }
+  }, [rawData])
 
   return (
     <div ref={ref} style={{ width: '100%', height: '100%' }}>
