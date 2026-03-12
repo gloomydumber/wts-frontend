@@ -2201,9 +2201,10 @@ Both environments fire two `market/all` requests with similar gaps (~78-105ms). 
 
 Instead of a backend proxy, implemented a frontend connection orchestration layer that deduplicates **all** external endpoint requests across widgets — not limited to specific exchanges. `MarketDataClient` uses URL-based in-flight dedup (same URL = same Promise) and TTL cache, so any widget requesting the same endpoint gets the cached/in-flight result regardless of which exchange or API it targets. Currently only Upbit and Binance endpoints are fetched (PremiumTable's needs), but the architecture handles any future exchange endpoints seamlessly. WebSocket dedup is not yet implemented (no current duplication), but the same principle applies if needed. Both npm packages received new optional props for host-provided market data, keeping standalone mode fully backwards compatible. Phase 2 (Tauri/Rust backend) will naturally replace frontend fetches with `invoke()` calls.
 
-**npm package changes:**
-- `@gloomydumber/crypto-orderbook` v0.5.0 — new `rawExchangeData?: { rawResponses: Record<string, unknown> }` prop. Passes raw REST JSON to adapters — each adapter's `parseRawAvailablePairs()` handles exchange-specific extraction internally. If the current exchange has no data in `rawResponses`, falls back to internal fetch. Breaking change from v0.4.x's `availablePairs: string[]`.
-- `@gloomydumber/premium-table` v0.7.0 — new `availableMarkets?: { rawResponses: Record<string, unknown> }` prop. Passes raw REST JSON to adapters — all normalization (BEAMX→BEAM), filtering (delisted/halted), and caching handled internally via `parseRawTickerData()`. Breaking change from v0.6.0's `{ tickers, prices? }` format.
+**npm package changes (both use the same prop name and interface):**
+- `@gloomydumber/crypto-orderbook` v0.5.0 — new `rawExchangeData?: RawExchangeData` prop. Adapters parse via `parseRawAvailablePairs()`. Falls back to internal fetch when current exchange has no data in `rawResponses`.
+- `@gloomydumber/premium-table` v0.8.0 — new `rawExchangeData?: RawExchangeData` prop (renamed from `availableMarkets` in v0.7.0). Adapters parse via `parseRawTickerData()`. All normalization (BEAMX→BEAM), filtering (delisted/halted), and caching handled internally.
+- Both packages share the same `RawExchangeData` interface: `{ rawResponses: Record<string, unknown> }` keyed by exchange ID. Both fall back to internal standalone fetch when omitted.
 
 **wts-frontend changes:**
 - `src/services/MarketDataClient.ts` — fetch wrapper with retry (exponential backoff), in-flight request deduplication, TTL cache, 429/5xx retry logic. For public market data only — user actions (order, withdraw, etc.) are fire-once with no retry.

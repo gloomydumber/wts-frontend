@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { PremiumTable } from '@gloomydumber/premium-table'
-import type { AvailableMarkets } from '@gloomydumber/premium-table'
+import type { RawExchangeData } from '@gloomydumber/premium-table'
 import '@gloomydumber/premium-table/style.css'
 import { useTheme } from '@mui/material/styles'
 import { useAtomValue } from 'jotai'
@@ -38,19 +38,19 @@ export default function PremiumTableWidget() {
 
   // Pass raw REST responses — premium-table's adapters handle normalization internally
   // Wait for shared data before mounting PremiumTable to avoid duplicate internal fetches.
-  // On fetch failure rawData stays null → availableMarkets is undefined → standalone mode.
-  const availableMarkets: AvailableMarkets | undefined = useMemo(() => {
+  // On fetch failure rawData stays null → rawExchangeData is undefined → standalone mode.
+  const rawExchangeData: RawExchangeData | undefined = useMemo(() => {
     if (!rawData) return undefined
     return { rawResponses: rawData }
   }, [rawData])
 
   return (
     <div ref={ref} style={{ width: '100%', height: '100%' }}>
-      {height > 0 && availableMarkets && (
+      {height > 0 && rawExchangeData && (
         <PremiumTable
           height={height}
           theme={theme}
-          availableMarkets={availableMarkets}
+          rawExchangeData={rawExchangeData}
         />
       )}
     </div>
