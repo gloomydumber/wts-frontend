@@ -2199,7 +2199,7 @@ Both environments fire two `market/all` requests with similar gaps (~78-105ms). 
 
 **Layer 1: Frontend connection orchestration (replaces backend proxy)**
 
-Instead of a backend proxy, implemented a frontend connection orchestration layer that deduplicates REST calls across widgets. Both npm packages received new optional props for host-provided market data, keeping standalone mode fully backwards compatible. Phase 2 (Tauri/Rust backend) will naturally replace frontend fetches with `invoke()` calls.
+Instead of a backend proxy, implemented a frontend connection orchestration layer that deduplicates **all** external endpoint requests across widgets — not limited to specific exchanges. `MarketDataClient` uses URL-based in-flight dedup (same URL = same Promise) and TTL cache, so any widget requesting the same endpoint gets the cached/in-flight result regardless of which exchange or API it targets. Currently only Upbit and Binance endpoints are fetched (PremiumTable's needs), but the architecture handles any future exchange endpoints seamlessly. WebSocket dedup is not yet implemented (no current duplication), but the same principle applies if needed. Both npm packages received new optional props for host-provided market data, keeping standalone mode fully backwards compatible. Phase 2 (Tauri/Rust backend) will naturally replace frontend fetches with `invoke()` calls.
 
 **npm package changes:**
 - `@gloomydumber/crypto-orderbook` v0.5.0 — new `rawExchangeData?: { rawResponses: Record<string, unknown> }` prop. Passes raw REST JSON to adapters — each adapter's `parseRawAvailablePairs()` handles exchange-specific extraction internally. If the current exchange has no data in `rawResponses`, falls back to internal fetch. Breaking change from v0.4.x's `availablePairs: string[]`.
@@ -2219,10 +2219,11 @@ Instead of a backend proxy, implemented a frontend connection orchestration laye
 - On fetch failure, `rawData` stays `null` → widgets don't render. If standalone fallback is needed, add a timeout that sets `rawData` to `{}` so widgets mount in standalone mode.
 
 **What this fixes:**
-- Upbit `market/all` now called once (shared cache), not twice → eliminates 429 on Vercel
+- All external REST endpoints are deduplicated by URL — any widget requesting the same URL gets the same cached/in-flight Promise. Currently eliminates duplicate Upbit `market/all` (2x→1x, fixes Vercel 429) and Binance `ticker/price` (2x→1x). Automatically applies to any future exchange endpoints added to ConnectionManager.
 - Retry with exponential backoff on 429/5xx/network errors → resilient to transient failures
 - In-flight dedup → concurrent widget mounts get same Promise, no duplicate requests
 - Future widgets reuse the same cache → no additional API pressure
+- WebSocket dedup not yet needed (no current duplication), but should be implemented if future widgets share exchange streams
 
 **Verified request counts (localhost HAR, 2026-03-12):**
 
