@@ -2195,37 +2195,14 @@ Both environments fire two `market/all` requests with similar gaps (~78-105ms). 
 | localhost | 200 | 200 | ~105ms |
 | Vercel | 200 or 429 | **429 always** | ~78ms |
 
-#### Fix Required (Phase 1 — three layers)
+#### Fix Applied (2026-03-12): All Layers Resolved
 
-**Layer 1 (primary): Backend proxy for Upbit REST APIs**
-- Client-side `fetch()` to Upbit is unviable due to Origin-based rate limiting
-- For Vercel deployment: add a Vercel serverless function (`/api/upbit/market-all`) that proxies the request server-side (no `Origin` header → `group=market` tier)
-- For Phase 2: Tauri/Rust backend handles all exchange API calls natively
+**Layer 1: Frontend connection orchestration (replaces backend proxy)**
 
-**Layer 2: wts-frontend — block rendering until hydration completes**
-- Do not render any widgets until `atomWithStorage` has loaded persisted values from localStorage
-- Options: hydration gate component, `useHydrateAtoms`, or `onMount` callback to detect when storage values are ready
-- Eliminates flash-mount — no phantom REST/WebSocket calls from hidden widgets
-
-**Layer 3: npm packages — defensive hardening**
-- **Retry on 429 with backoff** — instead of returning empty array on REST failure, retry with exponential backoff
-- **Deduplicate the `market/all` call** — shared singleton cache across packages
-- **Guard WebSocket subscription** — do not connect or send subscription message with empty codes/params; wait for valid ticker data
-- **Orderbook**: do not maintain Upbit WebSocket connection when displaying a different exchange
-- **Orderbook `atomWithStorage` default** — `@gloomydumber/crypto-orderbook` uses `atomWithStorage("cob-exchange", "upbit")` internally, meaning the default exchange is Upbit. On every page refresh, the component mounts with `"upbit"` before localStorage hydrates the user's actual selection → fires Upbit REST + WebSocket → then switches to the persisted exchange. This causes a phantom Upbit connection on every refresh (visible as "WebSocket is closed before the connection is established" in DevTools), wastes Upbit API budget, and on Vercel the connection sometimes fails to clean up properly (lingering unused Upbit orderbook stream). **Fix:** the default should be `null`/empty — no exchange selected, no connection attempted — until `atomWithStorage` hydrates from localStorage. On first-ever visit (no persisted value), the user selects an exchange from the UI before any connection is made.
-
-**Affected code:**
-- `src/store/atoms.ts` — `widgetVisibilityAtom` uses `atomWithStorage` with sync default fallback
-- `src/layout/defaults.ts` — `WIDGET_REGISTRY` `defaultVisible` flags
-- `@gloomydumber/premium-table` — `fetchAvailableTickers()` in upbitAdapter, WebSocket init sequence
-- `@gloomydumber/crypto-orderbook` — `fetchAvailablePairs()` in upbit adapter, `atomWithStorage("cob-exchange", "upbit")` default, exchange-independent Upbit connection
-
-#### Fix Applied (2026-03-11): Connection Orchestration Layer
-
-**Approach:** Instead of a backend proxy, implemented a frontend connection orchestration layer that deduplicates REST calls across widgets. Both npm packages received new optional props for host-provided market data, keeping standalone mode fully backwards compatible.
+Instead of a backend proxy, implemented a frontend connection orchestration layer that deduplicates REST calls across widgets. Both npm packages received new optional props for host-provided market data, keeping standalone mode fully backwards compatible. Phase 2 (Tauri/Rust backend) will naturally replace frontend fetches with `invoke()` calls.
 
 **npm package changes:**
-- `@gloomydumber/crypto-orderbook` v0.4.0 — new `availablePairs?: string[]` prop. When provided, skips internal `fetchAvailablePairs()` REST call.
+- `@gloomydumber/crypto-orderbook` v0.5.0 — new `rawExchangeData?: { rawResponses: Record<string, unknown> }` prop. Passes raw REST JSON to adapters — each adapter's `parseRawAvailablePairs()` handles exchange-specific extraction internally. If the current exchange has no data in `rawResponses`, falls back to internal fetch. Breaking change from v0.4.x's `availablePairs: string[]`.
 - `@gloomydumber/premium-table` v0.7.0 — new `availableMarkets?: { rawResponses: Record<string, unknown> }` prop. Passes raw REST JSON to adapters — all normalization (BEAMX→BEAM), filtering (delisted/halted), and caching handled internally via `parseRawTickerData()`. Breaking change from v0.6.0's `{ tickers, prices? }` format.
 
 **wts-frontend changes:**
@@ -2234,7 +2211,7 @@ Both environments fire two `market/all` requests with similar gaps (~78-105ms). 
 - `src/store/marketDataAtoms.ts` — shared Jotai atoms (`premiumTableRawDataAtom`, `marketDataReadyAtom`).
 - `src/hooks/useSharedMarketData.ts` — init hook called in App.tsx, fetches raw data on startup, stores as `{ upbit, binance }`.
 - `src/components/widgets/PremiumTableWidget/index.tsx` — passes `{ rawResponses: rawData }` from shared atom.
-- `src/components/widgets/OrderbookWidget/index.tsx` — passes `availablePairs` from ConnectionManager.
+- `src/components/widgets/OrderbookWidget/index.tsx` — passes `{ rawResponses: rawData }` from shared atom (same data as PremiumTable).
 - `src/App.tsx` — calls `useSharedMarketData()`.
 
 **What this fixes:**
@@ -2243,11 +2220,37 @@ Both environments fire two `market/all` requests with similar gaps (~78-105ms). 
 - In-flight dedup → concurrent widget mounts get same Promise, no duplicate requests
 - Future widgets reuse the same cache → no additional API pressure
 
-**Layer 2 fix (hydration gate, same session):**
-- `src/store/atoms.ts` — `widgetVisibilityAtom` and `layoutsAtom` now read persisted values synchronously from localStorage at module init time via `getHydratedVisibility()` / `getHydratedLayouts()`. The atom's initial value already reflects the user's saved state — no async delay, no flash-mount, no phantom widget mount/unmount cycle.
+**Layer 2: Sync localStorage init — prevents flash-mount**
 
-**Remaining items (all fixed):**
-- ~~Orderbook `atomWithStorage` default~~ — **Fixed in `@gloomydumber/crypto-orderbook` v0.4.1**: sync localStorage hydration at module init (same pattern as wts-frontend's `atoms.ts`).
+> **Terminology note:** "Hydration" has two unrelated meanings in frontend:
+>
+> 1. **React SSR hydration** — Server pre-renders HTML, sends it to the browser, then React "hydrates" the static HTML by attaching event handlers and making it interactive. Only happens with SSR frameworks (Next.js, Remix). **Does not apply to this project** — we are a CSR SPA (Vite), so React builds the entire DOM from scratch on the client. The server sends an empty `<div id="root">`.
+>
+> 2. **Jotai `atomWithStorage` "hydration"** — Jotai's term for loading a persisted value from localStorage into an atom. This is just "reading saved state" — nothing to do with SSR. Jotai made this operation **async** (for SSR compatibility where `localStorage` doesn't exist on the server), which causes a brief first-render with the wrong default value before the real value loads.
+>
+> What we call "sync hydration" in this codebase is really **sync initialization** — we read localStorage ourselves at module init (synchronous, before any render) and pass that as the default. This is safe because we're a client-only SPA where `localStorage` is always available. **This pattern would break in SSR** (no `localStorage` on server). If SSR is ever needed, add a `typeof window !== 'undefined'` guard to the `hydrate()` helper.
+
+**The problem:** `atomWithStorage('chartInterval', '4h')` creates the atom with `'4h'` immediately (sync), then updates to the localStorage value `'1m'` on the next tick (async). React renders during the sync phase → ChartWidget opens a WebSocket to `btcusdt@kline_4h` → async update fires → re-renders with `'1m'` → old WS disconnects ("closed before established") → new WS opens to `btcusdt@kline_1m`.
+
+**The fix:** Read localStorage synchronously before the atom is created:
+```typescript
+function hydrate<T>(key: string, fallback: T): T {
+  // Sync — blocks, but localStorage reads are <1ms
+  const stored = localStorage.getItem(key)
+  if (stored != null) return JSON.parse(stored) as T
+  return fallback
+}
+atomWithStorage('chartInterval', hydrate('chartInterval', '4h'))
+// Initial value is '1m' from the start — no flash, no phantom connection
+```
+
+- `src/store/atoms.ts` — **All `atomWithStorage` atoms now use sync init as standard practice.** A generic `hydrate<T>(key, fallback)` helper reads localStorage synchronously at module init and passes the result as the default value. The async hydration still runs but finds the same value — no intermediate wrong state, no phantom connections, no loading UI needed.
+- Applied to: `layoutsAtom`, `widgetVisibilityAtom`, `isDarkAtom`, `chartExchangeAtom`, `chartQuoteAtom`, `chartBaseAtom`, `chartIntervalAtom`, `dexWalletsAtom`, `dexSettingsAtom`, `totpEntriesAtom`.
+- `widgetVisibilityAtom` keeps its own `getHydratedVisibility()` for merge logic (persisted values + defaults for new widgets).
+
+**Layer 3: Orderbook `atomWithStorage` flash-mount fix**
+
+- `@gloomydumber/crypto-orderbook` v0.4.1→v0.5.0 — `configAtoms.ts` sync localStorage hydration (v0.4.1). `rawExchangeData` prop replaces `availablePairs` (v0.5.0) — adapters parse raw data internally, same pattern as premium-table.
 
 **Open decision: Binance shared endpoint — `/api/v3/exchangeInfo` vs `/api/v3/ticker/price`**
 

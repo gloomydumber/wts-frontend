@@ -5,25 +5,30 @@ import { defaultLayouts, WIDGET_REGISTRY } from '../layout/defaults'
 import type { DexWalletsState, DexSettings } from '../components/widgets/DexWidget/types'
 import type { TotpEntry } from '../components/widgets/TotpWidget/types'
 
-// Layout state — persisted to localStorage
-// Sync hydration: same pattern as widgetVisibilityAtom to avoid layout flash
-function getHydratedLayouts(): Layouts {
+// ── Sync hydration helper ──────────────────────────────────────────
+// atomWithStorage's internal hydration is async (for SSR compat),
+// meaning the first render frame uses the fallback before localStorage
+// loads. This causes flash-mount: widgets render with wrong defaults,
+// fire phantom REST/WebSocket calls, then re-render with the real value.
+//
+// Fix: read localStorage synchronously at module init and pass the
+// result as the fallback. The atom's initial value is correct from the
+// first frame. The async hydration still runs but finds the same value.
+function hydrate<T>(key: string, fallback: T): T {
   try {
-    const stored = localStorage.getItem('layouts')
-    if (stored) return JSON.parse(stored) as Layouts
-  } catch { /* corrupted localStorage — use defaults */ }
-  return defaultLayouts
+    const stored = localStorage.getItem(key)
+    if (stored != null) return JSON.parse(stored) as T
+  } catch { /* corrupted localStorage — use fallback */ }
+  return fallback
 }
-export const layoutsAtom = atomWithStorage<Layouts>('layouts', getHydratedLayouts())
+
+// ── Layout ─────────────────────────────────────────────────────────
+export const layoutsAtom = atomWithStorage<Layouts>('layouts', hydrate('layouts', defaultLayouts))
 
 // Current breakpoint
 export const currentBreakpointAtom = atom<string>('lg')
 
-// Widget visibility — persisted to localStorage
-// Hydration gate: read persisted value synchronously at module init.
-// This prevents the flash-mount issue where atomWithStorage returns defaults
-// on the first render frame (before async hydration), causing all defaultVisible
-// widgets to mount and fire REST/WebSocket calls for widgets the user had hidden.
+// ── Widget visibility ──────────────────────────────────────────────
 const defaultVisibility: Record<string, boolean> = {}
 for (const widget of WIDGET_REGISTRY) {
   defaultVisibility[widget.id] = widget.defaultVisible ?? false
@@ -44,36 +49,29 @@ export const widgetVisibilityAtom = atomWithStorage<Record<string, boolean>>(
   getHydratedVisibility(),
 )
 
-// Theme — persisted to localStorage
-export const isDarkAtom = atomWithStorage<boolean>('isDark', true)
+// ── Theme ──────────────────────────────────────────────────────────
+export const isDarkAtom = atomWithStorage<boolean>('isDark', hydrate('isDark', true))
 
-// Chart config — persisted to localStorage (survives refresh like OrderbookWidget)
-export const chartExchangeAtom = atomWithStorage<string>('chartExchange', 'binance')
-export const chartQuoteAtom = atomWithStorage<string>('chartQuote', 'USDT')
-export const chartBaseAtom = atomWithStorage<string>('chartBase', 'BTC')
-export const chartIntervalAtom = atomWithStorage<string>('chartInterval', '4h')
+// ── Chart config ───────────────────────────────────────────────────
+export const chartExchangeAtom = atomWithStorage<string>('chartExchange', hydrate('chartExchange', 'binance'))
+export const chartQuoteAtom = atomWithStorage<string>('chartQuote', hydrate('chartQuote', 'USDT'))
+export const chartBaseAtom = atomWithStorage<string>('chartBase', hydrate('chartBase', 'BTC'))
+export const chartIntervalAtom = atomWithStorage<string>('chartInterval', hydrate('chartInterval', '4h'))
 
-// Widget settings dialog open state (keyed by widget id)
+// ── Widget settings ────────────────────────────────────────────────
 export const widgetSettingsOpenAtom = atom<Record<string, boolean>>({})
-
-// Widget settings disabled state (keyed by widget id)
 export const widgetSettingsDisabledAtom = atom<Record<string, boolean>>({})
 
-// DEX wallets — multi-wallet support, persisted to localStorage
-// Replaces old dexWalletAtom + dexMnemonicAtom
+// ── DEX wallets ────────────────────────────────────────────────────
 const dexWalletsDefault: DexWalletsState = { wallets: [], activeWalletId: '' }
+export const dexWalletsAtom = atomWithStorage<DexWalletsState>('dexWallets', hydrate('dexWallets', dexWalletsDefault))
 
-export const dexWalletsAtom = atomWithStorage<DexWalletsState>('dexWallets', dexWalletsDefault)
+// ── DEX settings ───────────────────────────────────────────────────
+const dexSettingsDefault: DexSettings = { chains: {}, defaultSlippageBps: 50, gasPriority: 'medium' }
+export const dexSettingsAtom = atomWithStorage<DexSettings>('dexSettings', hydrate('dexSettings', dexSettingsDefault))
 
-// DEX settings — persisted to localStorage
-export const dexSettingsAtom = atomWithStorage<DexSettings>('dexSettings', {
-  chains: {},
-  defaultSlippageBps: 50,
-  gasPriority: 'medium',
-})
-
-// TOTP entries — persisted to localStorage (UNENCRYPTED)
+// ── TOTP entries ───────────────────────────────────────────────────
 // Phase 2: migrate to Tauri encrypted vault (vault.enc). Secrets in localStorage
 // are as sensitive as API keys — anyone with access can generate valid 2FA codes.
 // See HANDOFF.md "Unified Backup / Restore" for the .wts export/import plan.
-export const totpEntriesAtom = atomWithStorage<TotpEntry[]>('totpEntries', [])
+export const totpEntriesAtom = atomWithStorage<TotpEntry[]>('totpEntries', hydrate('totpEntries', []))

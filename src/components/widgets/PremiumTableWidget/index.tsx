@@ -37,6 +37,8 @@ export default function PremiumTableWidget() {
   const rawData = useAtomValue(premiumTableRawDataAtom)
 
   // Pass raw REST responses — premium-table's adapters handle normalization internally
+  // Wait for shared data before mounting PremiumTable to avoid duplicate internal fetches.
+  // On fetch failure rawData stays null → availableMarkets is undefined → standalone mode.
   const availableMarkets: AvailableMarkets | undefined = useMemo(() => {
     if (!rawData) return undefined
     return { rawResponses: rawData }
@@ -44,7 +46,7 @@ export default function PremiumTableWidget() {
 
   return (
     <div ref={ref} style={{ width: '100%', height: '100%' }}>
-      {height > 0 && (
+      {height > 0 && availableMarkets && (
         <PremiumTable
           height={height}
           theme={theme}

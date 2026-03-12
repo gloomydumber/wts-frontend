@@ -1,40 +1,35 @@
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
 import { useTheme } from '@mui/material/styles'
+import { useAtomValue } from 'jotai'
 import { Orderbook } from '@gloomydumber/crypto-orderbook'
+import type { RawExchangeData } from '@gloomydumber/crypto-orderbook'
 import '@gloomydumber/crypto-orderbook/style.css'
-import { fetchOrderbookPairs } from '../../../services/ConnectionManager'
+import { premiumTableRawDataAtom } from '../../../store/marketDataAtoms'
 
 /**
  * Orderbook widget wrapper.
  *
- * Fetches available pairs via ConnectionManager (shared cache + retry + dedup)
- * and passes them as `availablePairs` prop so the package skips its own REST call.
- * For now, the initial fetch uses the default exchange (Upbit/KRW).
- * When the user changes exchange internally, Orderbook falls back to its own fetch.
+ * Passes shared raw REST responses from ConnectionManager.
+ * The Orderbook's adapters parse data for whichever exchange
+ * the user has selected internally via parseRawAvailablePairs().
+ * If the current exchange has no data in rawResponses, falls back
+ * to internal fetch.
  */
 export default function OrderbookWidget() {
   const theme = useTheme()
-  const [initialPairs, setInitialPairs] = useState<string[] | undefined>(undefined)
+  const rawData = useAtomValue(premiumTableRawDataAtom)
 
-  // Pre-fetch default pairs (Upbit KRW) via ConnectionManager
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchOrderbookPairs('upbit', 'KRW', controller.signal)
-      .then(pairs => {
-        if (!controller.signal.aborted && pairs.length > 0) {
-          setInitialPairs(pairs)
-        }
-      })
-      .catch(() => {/* fallback: Orderbook fetches internally */})
-    return () => controller.abort()
-  }, [])
+  const rawExchangeData: RawExchangeData | undefined = useMemo(() => {
+    if (!rawData) return undefined
+    return { rawResponses: rawData }
+  }, [rawData])
 
   return (
     <Orderbook
       height="100%"
       theme={theme}
       showHeader={false}
-      availablePairs={initialPairs}
+      rawExchangeData={rawExchangeData}
     />
   )
 }

@@ -24,6 +24,7 @@ Related docs (read only when relevant): HANDOFF-PHASE2.md (Tauri/Rust backend pl
 - Remaining widgets use mock data (API via Rust/Tauri in Phase 2)
 - Layout system: `src/layout/GridLayout.tsx` (responsive grid), `src/layout/defaults.ts` (widget registry, breakpoints)
 - State: Jotai atoms in `src/store/atoms.ts` (layouts, breakpoint, visibility, theme)
+- **`atomWithStorage` must always use sync hydration** — pass `hydrate(key, fallback)` as the default value. Never use a bare literal default with `atomWithStorage`. See `src/store/atoms.ts` for the `hydrate<T>()` helper. This prevents flash-mount (phantom REST/WS connections from wrong defaults on first render frame).
 - Design system: see HANDOFF.md Design System section
 
 ## Performance
