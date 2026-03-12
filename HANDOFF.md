@@ -2246,8 +2246,8 @@ Both environments fire two `market/all` requests with similar gaps (~78-105ms). 
 **Layer 2 fix (hydration gate, same session):**
 - `src/store/atoms.ts` — `widgetVisibilityAtom` and `layoutsAtom` now read persisted values synchronously from localStorage at module init time via `getHydratedVisibility()` / `getHydratedLayouts()`. The atom's initial value already reflects the user's saved state — no async delay, no flash-mount, no phantom widget mount/unmount cycle.
 
-**Remaining items (not yet fixed):**
-- Orderbook `atomWithStorage` default — still defaults to Upbit internally in `@gloomydumber/crypto-orderbook`, causing phantom Upbit connection on refresh before localStorage hydrates the user's exchange selection.
+**Remaining items (all fixed):**
+- ~~Orderbook `atomWithStorage` default~~ — **Fixed in `@gloomydumber/crypto-orderbook` v0.4.1**: sync localStorage hydration at module init (same pattern as wts-frontend's `atoms.ts`).
 
 **Open decision: Binance shared endpoint — `/api/v3/exchangeInfo` vs `/api/v3/ticker/price`**
 
