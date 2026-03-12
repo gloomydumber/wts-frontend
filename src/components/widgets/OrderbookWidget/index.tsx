@@ -24,6 +24,10 @@ export default function OrderbookWidget() {
     return { rawResponses: rawData }
   }, [rawData])
 
+  // Wait for shared data before mounting to avoid duplicate internal fetches.
+  // On fetch failure rawData stays null → rawExchangeData is undefined → standalone mode.
+  if (!rawExchangeData) return null
+
   return (
     <Orderbook
       height="100%"
