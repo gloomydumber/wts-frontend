@@ -2214,11 +2214,30 @@ Instead of a backend proxy, implemented a frontend connection orchestration laye
 - `src/components/widgets/OrderbookWidget/index.tsx` — passes `{ rawResponses: rawData }` from shared atom (same data as PremiumTable).
 - `src/App.tsx` — calls `useSharedMarketData()`.
 
+**Widget render gating:**
+- Both `PremiumTableWidget` and `OrderbookWidget` return `null` until `premiumTableRawDataAtom` has data. This prevents widgets from mounting with `undefined` props and falling back to internal REST fetches (which caused duplicate requests).
+- On fetch failure, `rawData` stays `null` → widgets don't render. If standalone fallback is needed, add a timeout that sets `rawData` to `{}` so widgets mount in standalone mode.
+
 **What this fixes:**
 - Upbit `market/all` now called once (shared cache), not twice → eliminates 429 on Vercel
 - Retry with exponential backoff on 429/5xx/network errors → resilient to transient failures
 - In-flight dedup → concurrent widget mounts get same Promise, no duplicate requests
 - Future widgets reuse the same cache → no additional API pressure
+
+**Verified request counts (localhost HAR, 2026-03-12):**
+
+| Request | Before (duplicated) | After (fixed) | Source |
+|---------|-------------------|---------------|--------|
+| `upbit market/all` | 2x | **1x** | ConnectionManager (shared) |
+| `binance ticker/price` (full) | 2x | **1x** | ConnectionManager (shared) |
+| `binance exchangeInfo` (full, ~4MB) | 2x | **1x** | Orderbook internal `fetchAvailablePairs` (Binance selected) |
+| `binance exchangeInfo?symbol=BTCUSDT` | 1x | 1x | Orderbook `fetchNativeTick` (per-symbol, small) |
+| `binance ticker/price?symbol=BTCUSDT` | 1x | 1x | Orderbook `fetchNativeTick` (per-symbol, small) |
+| `binance klines` | 1x | 1x | ChartWidget |
+| `binance depth?limit=1000` | 3-4x | 3x | Orderbook snapshot sync (expected — Binance diff stream protocol) |
+
+**Remaining: Orderbook still fetches `exchangeInfo` (full) independently.**
+ConnectionManager fetches `ticker/price` for Binance (used by premium-table), but the Orderbook's Binance adapter calls `exchangeInfo` for `fetchAvailablePairs` (has `status: "TRADING"` filter). These are different URLs so they can't be deduplicated by cache. Resolving this is tied to the open decision below (switch ConnectionManager to `exchangeInfo`).
 
 **Layer 2: Sync localStorage init — prevents flash-mount**
 
