@@ -4,7 +4,7 @@ import { useAtomValue } from 'jotai'
 import { Orderbook } from '@gloomydumber/crypto-orderbook'
 import type { RawExchangeData } from '@gloomydumber/crypto-orderbook'
 import '@gloomydumber/crypto-orderbook/style.css'
-import { premiumTableRawDataAtom } from '../../../store/marketDataAtoms'
+import { orderbookRawDataAtom } from '../../../store/marketDataAtoms'
 
 /**
  * Orderbook widget wrapper.
@@ -17,7 +17,7 @@ import { premiumTableRawDataAtom } from '../../../store/marketDataAtoms'
  */
 export default function OrderbookWidget() {
   const theme = useTheme()
-  const rawData = useAtomValue(premiumTableRawDataAtom)
+  const rawData = useAtomValue(orderbookRawDataAtom)
 
   const rawExchangeData: RawExchangeData | undefined = useMemo(() => {
     if (!rawData) return undefined

@@ -1564,3 +1564,45 @@ SQLite in WAL mode via `tauri-plugin-sql` for general persistence (layouts, sett
 - Phase 1: Implement unified Export/Import backup (`.wts` file, AES-256-GCM) — see HANDOFF.md "Unified Backup / Restore"
 - Phase 2: Migrate `totpEntriesAtom` from localStorage to encrypted vault (`vault.enc`)
 - Verify TOTP output against RFC 6238 test vector: secret `JBSWY3DPEHPK3PXP` at https://totp.danhersam.com/
+
+### 2026-03-13: Binance Endpoint Split (Option B) + Drawer Text Shrink
+
+**Goal:** Separate Binance REST data per widget — PremiumTable gets `ticker/price` (has prices for initial rendering), Orderbook gets `exchangeInfo` (has status, tickSize, baseAsset/quoteAsset). Also shrink drawer widget name text.
+
+**Context (Binance endpoint problem):**
+Binance WS does NOT send last-traded price on subscribe (unlike Upbit which sends it immediately). PremiumTable needs REST-seeded prices to avoid "---" columns for ~1-2s before WS trade events arrive. But Orderbook benefits from `exchangeInfo` which has `status: "TRADING"` filtering, `baseAsset`/`quoteAsset` fields, and tick size data. Previously both widgets shared the same atom with `ticker/price` data, which meant Orderbook couldn't leverage `exchangeInfo` without breaking PremiumTable's price seeding.
+
+**Solution: Option B — separate atoms, both endpoints, zero package changes.**
+
+Both npm packages (`@gloomydumber/premium-table` and `@gloomydumber/crypto-orderbook`) already handle both formats:
+- premium-table's Binance adapter: parses `ticker/price` format (`[{ symbol, price }]`)
+- crypto-orderbook's Binance adapter: `parseRawAvailablePairs` uses duck-typing (`if ('symbols' in json)`) to detect `exchangeInfo` format
+
+Upbit `market/all` is shared between both fetch paths — MarketDataClient deduplicates by URL, so only one actual Upbit request is made.
+
+**Changes made:**
+
+| File | Change |
+|------|--------|
+| `src/services/ConnectionManager.ts` | Refactored `ENDPOINTS` from `Record<string, string>` to `Record<string, Record<string, string>>` supporting multiple endpoints per exchange. Added `resolveEndpoint()` for `"exchange:key"` format. Added `fetchOrderbookRawData()`. Updated `fetchPremiumTableRawData()` to use `binance:ticker`. Updated `fetchOrderbookPairs()` to use `exchange:markets`. |
+| `src/store/marketDataAtoms.ts` | Added `orderbookRawDataAtom` — separate from `premiumTableRawDataAtom` |
+| `src/hooks/useSharedMarketData.ts` | Fetches both `fetchPremiumTableRawData` and `fetchOrderbookRawData` in parallel via `Promise.all`. Populates both atoms independently. |
+| `src/components/widgets/OrderbookWidget/index.tsx` | Switched from `premiumTableRawDataAtom` to `orderbookRawDataAtom` |
+| `src/presenter/Drawer.tsx` | Shrunk text: widget names/Close to `0.75rem`, subheaders to `0.75rem`, icons to `1.1rem`, `dense` lists, `minWidth: 32` on icons |
+
+**Architecture after change:**
+
+```
+ConnectionManager
+├── fetchPremiumTableRawData()
+│   ├── upbit:markets (deduped)     → premiumTableRawDataAtom.upbit
+│   └── binance:ticker              → premiumTableRawDataAtom.binance
+├── fetchOrderbookRawData()
+│   ├── upbit:markets (deduped)     → orderbookRawDataAtom.upbit
+│   └── binance:exchangeInfo        → orderbookRawDataAtom.binance
+└── fetchOrderbookPairs() (unchanged behavior, uses exchange:markets)
+```
+
+**Next steps:**
+- Resolve Open Decision in memory: Binance endpoint issue is now implemented (Option B), mark as done
+- Consider adding `invalidateCache()` call on manual refresh (Ctrl+Shift+R) to MarketDataClient

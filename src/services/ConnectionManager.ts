@@ -16,13 +16,40 @@ import { log } from './logger'
 
 // ── Exchange endpoint registry ──────────────────────────────────────
 
-const ENDPOINTS: Record<string, string> = {
-  upbit: 'https://api.upbit.com/v1/market/all',
-  bithumb: 'https://api.bithumb.com/v1/market/all',
-  binance: 'https://api.binance.com/api/v3/ticker/price',
-  bybit: 'https://api.bybit.com/v5/market/tickers?category=spot',
-  okx: 'https://www.okx.com/api/v5/market/tickers?instType=SPOT',
-  coinbase: 'https://api.exchange.coinbase.com/products',
+const ENDPOINTS: Record<string, Record<string, string>> = {
+  upbit: {
+    markets: 'https://api.upbit.com/v1/market/all',
+  },
+  bithumb: {
+    markets: 'https://api.bithumb.com/v1/market/all',
+  },
+  binance: {
+    ticker: 'https://api.binance.com/api/v3/ticker/price',
+    exchangeInfo: 'https://api.binance.com/api/v3/exchangeInfo',
+  },
+  bybit: {
+    markets: 'https://api.bybit.com/v5/market/tickers?category=spot',
+  },
+  okx: {
+    markets: 'https://www.okx.com/api/v5/market/tickers?instType=SPOT',
+  },
+  coinbase: {
+    markets: 'https://api.exchange.coinbase.com/products',
+  },
+}
+
+/** Resolve an endpoint URL. Supports "exchange" or "exchange:key" format. */
+function resolveEndpoint(id: string): string {
+  const [exchangeId, endpointKey] = id.includes(':') ? id.split(':', 2) : [id, undefined]
+  const exchange = ENDPOINTS[exchangeId]
+  if (!exchange) throw new Error(`Unknown exchange: ${exchangeId}`)
+  if (endpointKey) {
+    const url = exchange[endpointKey]
+    if (!url) throw new Error(`Unknown endpoint: ${exchangeId}:${endpointKey}`)
+    return url
+  }
+  // Default: first endpoint
+  return Object.values(exchange)[0]
 }
 
 // ── Public API ──────────────────────────────────────────────────────
@@ -34,12 +61,14 @@ const ENDPOINTS: Record<string, string> = {
  *
  * Results are cached (5 min TTL) and deduplicated by MarketDataClient.
  */
+/**
+ * @param id — exchange ID or "exchange:endpointKey" (e.g. "binance:ticker", "binance:exchangeInfo")
+ */
 export async function fetchRawExchangeData(
-  exchangeId: string,
+  id: string,
   signal?: AbortSignal,
 ): Promise<unknown> {
-  const url = ENDPOINTS[exchangeId]
-  if (!url) throw new Error(`Unknown exchange: ${exchangeId}`)
+  const url = resolveEndpoint(id)
 
   try {
     const data = await fetchMarketData<unknown>(url, 5 * 60 * 1000, signal)
@@ -50,7 +79,7 @@ export async function fetchRawExchangeData(
       level: 'ERROR',
       category: 'SYSTEM',
       source: 'ConnectionManager',
-      message: `Failed to fetch data for ${exchangeId}`,
+      message: `Failed to fetch data for ${id}`,
       data: { error: err instanceof Error ? err.message : String(err) },
     })
     throw err
@@ -59,22 +88,51 @@ export async function fetchRawExchangeData(
 
 /**
  * Fetch raw REST responses for the default PremiumTable pair
- * (Upbit + Binance). Returns raw JSON for each exchange —
+ * (Upbit + Binance ticker/price). Returns raw JSON for each exchange —
  * premium-table's adapters handle parsing + normalization internally.
+ *
+ * Uses binance:ticker (/ticker/price) — premium-table needs prices for
+ * initial rendering before Binance WS sends trade events.
  */
 export async function fetchPremiumTableRawData(
   signal?: AbortSignal,
 ): Promise<{ upbitData: unknown; binanceData: unknown }> {
   const [upbitData, binanceData] = await Promise.all([
     fetchRawExchangeData('upbit', signal),
-    fetchRawExchangeData('binance', signal),
+    fetchRawExchangeData('binance:ticker', signal),
   ])
 
   log({
     level: 'INFO',
     category: 'SYSTEM',
     source: 'ConnectionManager',
-    message: 'Fetched raw market data for PremiumTable (Upbit + Binance)',
+    message: 'Fetched raw market data for PremiumTable (Upbit + Binance ticker/price)',
+  })
+
+  return { upbitData, binanceData }
+}
+
+/**
+ * Fetch raw REST responses for Orderbook.
+ * Upbit: market/all (same as premium-table — deduped by MarketDataClient).
+ * Binance: exchangeInfo (has status, tickSize, baseAsset/quoteAsset).
+ *
+ * Uses binance:exchangeInfo — orderbook's parseRawAvailablePairs already
+ * handles this format via duck-typing ('symbols' in json).
+ */
+export async function fetchOrderbookRawData(
+  signal?: AbortSignal,
+): Promise<{ upbitData: unknown; binanceData: unknown }> {
+  const [upbitData, binanceData] = await Promise.all([
+    fetchRawExchangeData('upbit', signal),
+    fetchRawExchangeData('binance:exchangeInfo', signal),
+  ])
+
+  log({
+    level: 'INFO',
+    category: 'SYSTEM',
+    source: 'ConnectionManager',
+    message: 'Fetched raw market data for Orderbook (Upbit + Binance exchangeInfo)',
   })
 
   return { upbitData, binanceData }
@@ -96,7 +154,7 @@ export async function fetchOrderbookPairs(
   signal?: AbortSignal,
 ): Promise<string[]> {
   try {
-    const data = await fetchRawExchangeData(exchangeId, signal)
+    const data = await fetchRawExchangeData(exchangeId + ':markets', signal)
 
     // Upbit/Bithumb: [{ market: "KRW-BTC" }]
     if (exchangeId === 'upbit' || exchangeId === 'bithumb') {

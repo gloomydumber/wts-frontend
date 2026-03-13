@@ -2208,15 +2208,15 @@ Instead of a backend proxy, implemented a frontend connection orchestration laye
 
 **wts-frontend changes:**
 - `src/services/MarketDataClient.ts` — fetch wrapper with retry (exponential backoff), in-flight request deduplication, TTL cache, 429/5xx retry logic. For public market data only — user actions (order, withdraw, etc.) are fire-once with no retry.
-- `src/services/ConnectionManager.ts` — fetches raw exchange REST responses (no parsing/normalization). Provides `fetchRawExchangeData()`, `fetchPremiumTableRawData()`, `fetchOrderbookPairs()`.
-- `src/store/marketDataAtoms.ts` — shared Jotai atoms (`premiumTableRawDataAtom`, `marketDataReadyAtom`).
-- `src/hooks/useSharedMarketData.ts` — init hook called in App.tsx, fetches raw data on startup, stores as `{ upbit, binance }`.
-- `src/components/widgets/PremiumTableWidget/index.tsx` — passes `{ rawResponses: rawData }` from shared atom.
-- `src/components/widgets/OrderbookWidget/index.tsx` — passes `{ rawResponses: rawData }` from shared atom (same data as PremiumTable).
+- `src/services/ConnectionManager.ts` — fetches raw exchange REST responses (no parsing/normalization). `ENDPOINTS` is `Record<string, Record<string, string>>` supporting multiple endpoints per exchange (e.g. `binance.ticker`, `binance.exchangeInfo`). `resolveEndpoint()` handles `"exchange:key"` format. Provides `fetchRawExchangeData()`, `fetchPremiumTableRawData()` (uses `binance:ticker`), `fetchOrderbookRawData()` (uses `binance:exchangeInfo`), `fetchOrderbookPairs()`.
+- `src/store/marketDataAtoms.ts` — shared Jotai atoms: `premiumTableRawDataAtom` (Binance `ticker/price`), `orderbookRawDataAtom` (Binance `exchangeInfo`), `marketDataReadyAtom`.
+- `src/hooks/useSharedMarketData.ts` — init hook called in App.tsx, fetches both `fetchPremiumTableRawData` and `fetchOrderbookRawData` in parallel via `Promise.all`. Upbit `market/all` is deduped by MarketDataClient (same URL).
+- `src/components/widgets/PremiumTableWidget/index.tsx` — passes `{ rawResponses: rawData }` from `premiumTableRawDataAtom`.
+- `src/components/widgets/OrderbookWidget/index.tsx` — passes `{ rawResponses: rawData }` from `orderbookRawDataAtom`.
 - `src/App.tsx` — calls `useSharedMarketData()`.
 
 **Widget render gating:**
-- Both `PremiumTableWidget` and `OrderbookWidget` return `null` until `premiumTableRawDataAtom` has data. This prevents widgets from mounting with `undefined` props and falling back to internal REST fetches (which caused duplicate requests).
+- `PremiumTableWidget` returns `null` until `premiumTableRawDataAtom` has data, `OrderbookWidget` returns `null` until `orderbookRawDataAtom` has data. This prevents widgets from mounting with `undefined` props and falling back to internal REST fetches (which caused duplicate requests).
 - On fetch failure, `rawData` stays `null` → widgets don't render. If standalone fallback is needed, add a timeout that sets `rawData` to `{}` so widgets mount in standalone mode.
 
 **What this fixes:**
@@ -2230,16 +2230,15 @@ Instead of a backend proxy, implemented a frontend connection orchestration laye
 
 | Request | Before (duplicated) | After (fixed) | Source |
 |---------|-------------------|---------------|--------|
-| `upbit market/all` | 2x | **1x** | ConnectionManager (shared) |
-| `binance ticker/price` (full) | 2x | **1x** | ConnectionManager (shared) |
-| `binance exchangeInfo` (full, ~4MB) | 2x | **1x** | Orderbook internal `fetchAvailablePairs` (Binance selected) |
+| `upbit market/all` | 2x | **1x** | ConnectionManager (shared, deduped by URL) |
+| `binance ticker/price` (full) | 2x | **1x** | ConnectionManager → `premiumTableRawDataAtom` |
+| `binance exchangeInfo` (full, ~4MB) | 2x | **1x** | ConnectionManager → `orderbookRawDataAtom` |
 | `binance exchangeInfo?symbol=BTCUSDT` | 1x | 1x | Orderbook `fetchNativeTick` (per-symbol, small) |
 | `binance ticker/price?symbol=BTCUSDT` | 1x | 1x | Orderbook `fetchNativeTick` (per-symbol, small) |
 | `binance klines` | 1x | 1x | ChartWidget |
 | `binance depth?limit=1000` | 3-4x | 3x | Orderbook snapshot sync (expected — Binance diff stream protocol) |
 
-**Remaining: Orderbook still fetches `exchangeInfo` (full) independently.**
-ConnectionManager fetches `ticker/price` for Binance (used by premium-table), but the Orderbook's Binance adapter calls `exchangeInfo` for `fetchAvailablePairs` (has `status: "TRADING"` filter). These are different URLs so they can't be deduplicated by cache. Resolving this is tied to the open decision below (switch ConnectionManager to `exchangeInfo`).
+**Resolved (2026-03-13):** Orderbook now receives `exchangeInfo` via `orderbookRawDataAtom` from ConnectionManager. Its `parseRawAvailablePairs` adapter detects the format via duck-typing (`'symbols' in json`), so no package changes were needed. PremiumTable continues to receive `ticker/price` via `premiumTableRawDataAtom` for REST price seeding.
 
 **Layer 2: Sync localStorage init — prevents flash-mount**
 
@@ -2273,22 +2272,13 @@ atomWithStorage('chartInterval', hydrate('chartInterval', '4h'))
 
 - `@gloomydumber/crypto-orderbook` v0.4.1→v0.5.0 — `configAtoms.ts` sync localStorage hydration (v0.4.1). `rawExchangeData` prop replaces `availablePairs` (v0.5.0) — adapters parse raw data internally, same pattern as premium-table.
 
-**Open decision: Binance shared endpoint — `/api/v3/exchangeInfo` vs `/api/v3/ticker/price`**
+**Resolved decision: Binance endpoints — Option B (both endpoints, separate atoms)**
 
-Both premium-table and crypto-orderbook need Binance ticker lists. Plan is to fetch once via ConnectionManager (cached, deduplicated) and share across widgets.
+Both Binance endpoints are now fetched via ConnectionManager and stored in separate atoms:
+- `binance:ticker` (`/api/v3/ticker/price`, ~100KB) → `premiumTableRawDataAtom` — has prices for REST seeding
+- `binance:exchangeInfo` (`/api/v3/exchangeInfo`, ~3-4MB) → `orderbookRawDataAtom` — has `status: "TRADING"`, `baseAsset`/`quoteAsset`, tick size
 
-| | `/exchangeInfo` | `/ticker/price` |
-|---|---|---|
-| Response size | ~3-4MB | ~100KB |
-| Has `status: "TRADING"` | Yes — naturally filters dead pairs (BEAM vs BEAMX) | No — includes stale/halted symbols |
-| Has prices | No | Yes — premium-table can seed rows immediately |
-| Has `baseAsset`/`quoteAsset` | Yes — clean field extraction | No — requires suffix-stripping |
-| Has tick size filters | Yes — orderbook could skip per-symbol REST call | No |
-| Orderbook standalone already uses | Yes (`fetchAvailablePairs`) | No |
-
-If `exchangeInfo`: premium-table loses Binance REST price seeding → rows show "---" for ~1-2s until WS connects. Standalone mode unaffected (keeps its own fetch). `parseRawTickerData` must handle both formats (host vs standalone).
-
-If both endpoints: best data, but 2 requests per Binance.
+Zero package changes needed — both adapters already handle their respective formats. Upbit `market/all` shared and deduped by URL.
 
 Cache invalidation plan (applies regardless of endpoint choice):
 - Hard refresh (Ctrl+Shift+R) → page reload → in-memory cache cleared → fresh fetch (already works)
