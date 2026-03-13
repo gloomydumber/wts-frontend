@@ -128,13 +128,13 @@ export default function WidgetDrawer() {
       <Drawer anchor="right" open={open} onClose={toggleDrawer(false)}>
         <Box sx={{ width: 300 }} role="presentation">
           {/* Close */}
-          <List>
+          <List dense>
             <ListItem disablePadding>
               <ListItemButton onClick={toggleDrawer(false)}>
-                <ListItemIcon>
-                  <CloseTwoToneIcon />
+                <ListItemIcon sx={{ minWidth: 32 }}>
+                  <CloseTwoToneIcon sx={{ fontSize: '1.1rem' }} />
                 </ListItemIcon>
-                <ListItemText primary="Close" />
+                <ListItemText primary="Close" slotProps={{ primary: { sx: { fontSize: '0.75rem' } } }} />
               </ListItemButton>
             </ListItem>
           </List>
@@ -146,7 +146,7 @@ export default function WidgetDrawer() {
             const widgets = groupedWidgets.get(key)
             if (!widgets?.length) return null
             return (
-              <List key={key} subheader={<ListSubheader>{label}</ListSubheader>}>
+              <List dense key={key} subheader={<ListSubheader sx={{ fontSize: '0.75rem', lineHeight: '32px' }}>{label}</ListSubheader>}>
                 {widgets.map((widget) => {
                   const Icon = widgetIcons[widget.id] || WidgetsTwoToneIcon
                   return (
@@ -157,10 +157,10 @@ export default function WidgetDrawer() {
                         }}
                         disabled={widget.permanent}
                       >
-                        <ListItemIcon>
-                          <Icon />
+                        <ListItemIcon sx={{ minWidth: 32 }}>
+                          <Icon sx={{ fontSize: '1.1rem' }} />
                         </ListItemIcon>
-                        <ListItemText primary={widget.label} />
+                        <ListItemText primary={widget.label} slotProps={{ primary: { sx: { fontSize: '0.75rem' } } }} />
                         <Switch
                           checked={
                             widget.permanent ? true : visibility[widget.id] !== false
