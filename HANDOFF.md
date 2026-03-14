@@ -2208,9 +2208,9 @@ Instead of a backend proxy, implemented a frontend connection orchestration laye
 
 **wts-frontend changes:**
 - `src/services/MarketDataClient.ts` — fetch wrapper with retry (exponential backoff), in-flight request deduplication, TTL cache, 429/5xx retry logic. For public market data only — user actions (order, withdraw, etc.) are fire-once with no retry.
-- `src/services/ConnectionManager.ts` — fetches raw exchange REST responses (no parsing/normalization). `ENDPOINTS` is `Record<string, Record<string, string>>` supporting multiple endpoints per exchange (e.g. `binance.ticker`, `binance.exchangeInfo`). `resolveEndpoint()` handles `"exchange:key"` format. Provides `fetchRawExchangeData()`, `fetchPremiumTableRawData()` (uses `binance:ticker`), `fetchOrderbookRawData()` (uses `binance:exchangeInfo`), `fetchOrderbookPairs()`.
-- `src/store/marketDataAtoms.ts` — shared Jotai atoms: `premiumTableRawDataAtom` (Binance `ticker/price`), `orderbookRawDataAtom` (Binance `exchangeInfo`), `marketDataReadyAtom`.
-- `src/hooks/useSharedMarketData.ts` — init hook called in App.tsx, fetches both `fetchPremiumTableRawData` and `fetchOrderbookRawData` in parallel via `Promise.all`. Upbit `market/all` is deduped by MarketDataClient (same URL).
+- `src/services/ConnectionManager.ts` — fetches raw exchange REST responses (no parsing/normalization). `ENDPOINTS` is `Record<string, Record<string, string>>` supporting multiple endpoints per exchange (e.g. `binance.ticker`, `binance.exchangeInfo`). `WIDGET_ENDPOINT_KEY` maps widget+exchange to the right endpoint key (only Binance differs: premium→`ticker`, orderbook→`exchangeInfo`; all others→`markets`). `fetchSharedMarketData()` reads persisted exchange selections from localStorage via `hydrate()` and fetches dynamically. Also provides `fetchRawExchangeData()` for ad-hoc use and `fetchOrderbookPairs()`.
+- `src/store/marketDataAtoms.ts` — shared Jotai atoms: `premiumTableRawDataAtom`, `orderbookRawDataAtom`, `marketDataReadyAtom`.
+- `src/hooks/useSharedMarketData.ts` — init hook called in App.tsx, calls single `fetchSharedMarketData()` which reads persisted exchange selections and fetches all needed exchanges in parallel. MarketDataClient deduplicates by URL.
 - `src/components/widgets/PremiumTableWidget/index.tsx` — passes `{ rawResponses: rawData }` from `premiumTableRawDataAtom`.
 - `src/components/widgets/OrderbookWidget/index.tsx` — passes `{ rawResponses: rawData }` from `orderbookRawDataAtom`.
 - `src/App.tsx` — calls `useSharedMarketData()`.
@@ -2252,21 +2252,20 @@ Instead of a backend proxy, implemented a frontend connection orchestration laye
 
 **The problem:** `atomWithStorage('chartInterval', '4h')` creates the atom with `'4h'` immediately (sync), then updates to the localStorage value `'1m'` on the next tick (async). React renders during the sync phase → ChartWidget opens a WebSocket to `btcusdt@kline_4h` → async update fires → re-renders with `'1m'` → old WS disconnects ("closed before established") → new WS opens to `btcusdt@kline_1m`.
 
-**The fix:** Read localStorage synchronously before the atom is created:
+**The fix (updated 2026-03-14):** Use Jotai's built-in `getOnInit: true` option:
 ```typescript
-function hydrate<T>(key: string, fallback: T): T {
-  // Sync — blocks, but localStorage reads are <1ms
-  const stored = localStorage.getItem(key)
-  if (stored != null) return JSON.parse(stored) as T
-  return fallback
-}
-atomWithStorage('chartInterval', hydrate('chartInterval', '4h'))
-// Initial value is '1m' from the start — no flash, no phantom connection
+const SYNC = { getOnInit: true } as const
+atomWithStorage('wts:chart:interval', '4h', undefined, SYNC)
+// Jotai reads localStorage synchronously on first use — no flash, no phantom connection
 ```
 
-- `src/store/atoms.ts` — **All `atomWithStorage` atoms now use sync init as standard practice.** A generic `hydrate<T>(key, fallback)` helper reads localStorage synchronously at module init and passes the result as the default value. The async hydration still runs but finds the same value — no intermediate wrong state, no phantom connections, no loading UI needed.
-- Applied to: `layoutsAtom`, `widgetVisibilityAtom`, `isDarkAtom`, `chartExchangeAtom`, `chartQuoteAtom`, `chartBaseAtom`, `chartIntervalAtom`, `dexWalletsAtom`, `dexSettingsAtom`, `totpEntriesAtom`.
-- `widgetVisibilityAtom` keeps its own `getHydratedVisibility()` for merge logic (persisted values + defaults for new widgets).
+Previously used a custom `hydrate<T>(key, fallback)` helper. Replaced with `getOnInit: true` which does the same thing natively. The custom `hydrate()` function is still used in non-atom contexts (e.g., `ConnectionManager` reading persisted exchange selections directly from localStorage, or `premium-table`'s `marketPairAtom.ts` reconstructing `MarketPair` from persisted IDs).
+
+- `src/store/atoms.ts` — **All `atomWithStorage` atoms now use `getOnInit: true` as standard practice.** All keys follow the `wts:<widget>:<key>` convention.
+- Applied to: `layoutsAtom`, `isDarkAtom`, `chartExchangeAtom`, `chartQuoteAtom`, `chartBaseAtom`, `chartIntervalAtom`, `dexWalletsAtom`, `dexSettingsAtom`, `totpEntriesAtom`.
+- `widgetVisibilityAtom` keeps its own `getHydratedVisibility()` for merge logic (persisted values + defaults for new widgets) — cannot use `getOnInit` because it needs a merge step.
+- `@gloomydumber/crypto-orderbook` v0.6.0 — also uses `getOnInit: true` instead of custom `hydrate()`.
+- `@gloomydumber/premium-table` v0.11.0 — `marketPairAtom` still uses `hydrate()` (plain `atom()`, not `atomWithStorage` — `MarketPair` contains adapter functions that can't be serialized).
 
 **Layer 3: Orderbook `atomWithStorage` flash-mount fix**
 

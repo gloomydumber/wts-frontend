@@ -2,6 +2,53 @@
 
 ## Session Log
 
+### 2026-03-14: localStorage Key Convention + Dynamic ConnectionManager + Exchange Pair Persistence
+
+**Goal:** Establish a unified `wts:<widget>:<key>` localStorage key convention across all repos, make ConnectionManager fetch dynamically based on persisted user selections, and persist PremiumTable's exchange pair selection.
+
+**What was done:**
+
+**1. localStorage key convention (`wts:<widget>:<key>`):**
+All localStorage keys across 3 codebases renamed to a consistent namespace:
+- wts-frontend: `chartExchange` → `wts:chart:exchange`, `isDark` → `wts:theme:dark`, `layouts` → `wts:layout:grids`, etc.
+- crypto-orderbook: `cob-exchange` → `wts:orderbook:exchange`, `cob-quote` → `wts:orderbook:quote`, etc.
+- premium-table: `premium-table:prefs:*` → `wts:premium:prefs:*`, new `wts:premium:exchangeA/B` + `wts:premium:quoteA/B`
+
+**2. Replaced `hydrate()` with `getOnInit: true`:**
+All `atomWithStorage` atoms in wts-frontend and crypto-orderbook now use Jotai's built-in `getOnInit: true` instead of the custom `hydrate()` helper. Same effect (sync localStorage read), cleaner API. `hydrate()` retained only for non-atom direct localStorage reads (ConnectionManager, premium-table's `marketPairAtom`).
+
+**3. PremiumTable exchange pair persistence (v0.11.0):**
+`marketPairAtom` was a plain `atom()` — reset to Upbit–Binance on every refresh. Now reads `wts:premium:exchangeA/B` + `wts:premium:quoteA/B` from localStorage via `hydrate()` at module init. `persistMarketPairSelection()` writes on user action. Cannot use `atomWithStorage` because `MarketPair` contains adapter objects (functions).
+
+**4. Dynamic ConnectionManager:**
+`fetchPremiumTableRawData()` and `fetchOrderbookRawData()` (hardcoded Upbit+Binance) replaced with `fetchSharedMarketData()` which reads persisted selections (`wts:premium:exchangeA/B`, `wts:orderbook:exchange`) from localStorage and fetches only the exchanges the user actually selected. `WIDGET_ENDPOINT_KEY` maps widget+exchange to the right endpoint key (only Binance differs: premium→`ticker`, orderbook→`exchangeInfo`; all others→`markets`).
+
+**5. Package bumps:**
+- `@gloomydumber/crypto-orderbook` 0.5.1 → 0.6.0
+- `@gloomydumber/premium-table` 0.10.0 → 0.11.0
+
+**Files changed in wts-frontend:**
+- `src/store/atoms.ts` — all keys renamed to `wts:*:*`, `hydrate()` replaced with `getOnInit: true`
+- `src/services/ConnectionManager.ts` — dynamic `fetchSharedMarketData()`, `WIDGET_ENDPOINT_KEY` routing
+- `src/hooks/useSharedMarketData.ts` — simplified to single `fetchSharedMarketData()` call
+- `src/store/marketDataAtoms.ts` — no changes (plain atoms, no keys)
+- `src/components/widgets/MemoWidget/index.tsx` — key → `wts:memo:entries`
+- `src/components/widgets/DexWidget/walletManager.ts` — key → `wts:dex:encrypted`
+- `package.json` — bumped crypto-orderbook + premium-table versions
+
+**Known gap — next session plan (Real Centralized Orchestration Layer):**
+
+ConnectionManager currently only covers PremiumTable and Orderbook (npm packages). Native widgets like ChartWidget bypass it entirely — `kline-adapters.ts` calls `fetch()` directly, including `https://api.binance.com/api/v3/exchangeInfo` which duplicates with Orderbook's. The "centralized orchestrator" goal is not yet fully realized.
+
+Next session should implement true centralized orchestration:
+1. **Route ALL external REST calls through MarketDataClient** — ChartWidget's `kline-adapters.ts` should use `fetchMarketData()` or `fetchRawExchangeData()` instead of raw `fetch()`. This gets automatic dedup + cache + retry for free.
+2. **Shared metadata endpoints** — `exchangeInfo`, `market/all`, `ticker/price`, etc. should be fetched once and shared across all widgets that need them. ChartWidget's `exchangeInfo` call for symbol validation would be deduped with Orderbook's.
+3. **Widget registration model** — instead of ConnectionManager knowing about specific widgets (premium/orderbook), widgets should declare what exchanges they need and ConnectionManager aggregates. This makes it extensible to future widgets (Screener, Funding, etc.).
+4. **Kline/candlestick data** — unique to ChartWidget, no dedup needed, but should still go through MarketDataClient for retry + caching benefits.
+5. **Audit all `fetch()` calls** — find every direct `fetch()` in native widgets and route through the centralized layer.
+
+---
+
 ### 2026-02-15: RGL v1 vs v2 Performance Benchmark
 
 **Goal:** Quantify the resize performance difference between react-grid-layout v1.4.4 and v2.2.2, which was previously observed but not profiled.

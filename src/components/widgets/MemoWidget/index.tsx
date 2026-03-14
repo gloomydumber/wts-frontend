@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Box, TextField } from '@mui/material'
 
-const STORAGE_KEY = 'wts-memos'
+const STORAGE_KEY = 'wts:memo:entries'
 
 function loadMemos(): string[] {
   try {

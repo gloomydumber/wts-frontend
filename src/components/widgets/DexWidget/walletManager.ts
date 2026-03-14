@@ -166,7 +166,7 @@ export async function decryptMnemonic(blob: EncryptedBlob, password: string): Pr
 
 // --- Storage helpers ---
 
-const STORAGE_KEY = 'dexWalletEncrypted'
+const STORAGE_KEY = 'wts:dex:encrypted'
 
 export function saveEncryptedBlob(blob: EncryptedBlob): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(blob))
