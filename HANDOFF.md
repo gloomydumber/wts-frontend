@@ -2199,7 +2199,7 @@ Both environments fire two `market/all` requests with similar gaps (~78-105ms). 
 
 **Layer 1: Frontend connection orchestration (replaces backend proxy)**
 
-Instead of a backend proxy, implemented a frontend connection orchestration layer that deduplicates **all** external endpoint requests across widgets — not limited to specific exchanges. `MarketDataClient` uses URL-based in-flight dedup (same URL = same Promise) and TTL cache, so any widget requesting the same endpoint gets the cached/in-flight result regardless of which exchange or API it targets. Currently only Upbit and Binance endpoints are fetched (PremiumTable's needs), but the architecture handles any future exchange endpoints seamlessly. WebSocket dedup is not yet implemented (no current duplication), but the same principle applies if needed. Both npm packages received new optional props for host-provided market data, keeping standalone mode fully backwards compatible. Phase 2 (Tauri/Rust backend) will naturally replace frontend fetches with `invoke()` calls.
+Centralized initialization orchestration layer — every REST call at app startup goes through `MarketDataClient` (URL-based in-flight dedup + TTL cache + retry with backoff). `ConnectionManager` reads persisted exchange selections from localStorage and dynamically fetches only the exchanges the user has selected. All native widget code (including `ChartWidget/kline-adapters.ts`) routes through `fetchMarketData()` — zero direct `fetch()` calls outside `MarketDataClient`. This is an **initialization-time** orchestrator, not a runtime data manager. After startup, live data flows through WebSocket connections managed by each widget/package independently. npm packages' internal fallback fetches (when `rawExchangeData` doesn't cover the current exchange) bypass MarketDataClient — this is by design for standalone mode. Phase 2 (Tauri/Rust backend) will replace frontend fetches with `invoke()` calls.
 
 **npm package changes (both use the same prop name and interface):**
 - `@gloomydumber/crypto-orderbook` v0.5.0 — new `rawExchangeData?: RawExchangeData` prop. Adapters parse via `parseRawAvailablePairs()`. Falls back to internal fetch when current exchange has no data in `rawResponses`.
@@ -2220,11 +2220,11 @@ Instead of a backend proxy, implemented a frontend connection orchestration laye
 - On fetch failure, `rawData` stays `null` → widgets don't render. If standalone fallback is needed, add a timeout that sets `rawData` to `{}` so widgets mount in standalone mode.
 
 **What this fixes:**
-- All external REST endpoints are deduplicated by URL — any widget requesting the same URL gets the same cached/in-flight Promise. Currently eliminates duplicate Upbit `market/all` (2x→1x, fixes Vercel 429) and Binance `ticker/price` (2x→1x). Automatically applies to any future exchange endpoints added to ConnectionManager.
+- All external REST endpoints are deduplicated by URL at initialization — zero direct `fetch()` outside MarketDataClient. Eliminates duplicate Upbit `market/all`, Binance `exchangeInfo`, Coinbase `/products` across all widgets (ConnectionManager + ChartWidget + npm packages via atoms).
 - Retry with exponential backoff on 429/5xx/network errors → resilient to transient failures
 - In-flight dedup → concurrent widget mounts get same Promise, no duplicate requests
-- Future widgets reuse the same cache → no additional API pressure
-- WebSocket dedup not yet needed (no current duplication), but should be implemented if future widgets share exchange streams
+- TTL cache (5min for pair lists, 30s for klines) → avoids redundant calls during rapid exchange/interval switching within a session
+- Note: TTL is passive — no automatic refetch on expiry. New exchange listings require user action (page reload or exchange switch). Cache fully clears on any page reload (F5 or Ctrl+Shift+R) since it's in-memory only.
 
 **Verified request counts (localhost HAR, 2026-03-12):**
 
@@ -2233,9 +2233,12 @@ Instead of a backend proxy, implemented a frontend connection orchestration laye
 | `upbit market/all` | 2x | **1x** | ConnectionManager (shared, deduped by URL) |
 | `binance ticker/price` (full) | 2x | **1x** | ConnectionManager → `premiumTableRawDataAtom` |
 | `binance exchangeInfo` (full, ~4MB) | 2x | **1x** | ConnectionManager → `orderbookRawDataAtom` |
-| `binance exchangeInfo?symbol=BTCUSDT` | 1x | 1x | Orderbook `fetchNativeTick` (per-symbol, small) |
-| `binance ticker/price?symbol=BTCUSDT` | 1x | 1x | Orderbook `fetchNativeTick` (per-symbol, small) |
-| `binance klines` | 1x | 1x | ChartWidget |
+| `binance exchangeInfo` (full, ~4MB) | 3x (OB+Chart+OB) | **1x** | MarketDataClient dedup (Orderbook via CM + Chart `fetchPairs`) |
+| `coinbase /products` | 2x (CM+Chart) | **1x** | MarketDataClient dedup (CM + Chart `fetchPairs`) |
+| `upbit market/all` | 2x (CM+Chart) | **1x** | MarketDataClient dedup (CM + Chart `fetchPairs`, URL normalized) |
+| `binance exchangeInfo?symbol=*` | 1x | 1x | Orderbook `fetchNativeTick` (per-symbol, small) |
+| `binance ticker/price?symbol=*` | 1x | 1x | Orderbook `fetchNativeTick` (per-symbol, small) |
+| `binance klines` | 1x | 1x | ChartWidget (via MarketDataClient, 30s cache) |
 | `binance depth?limit=1000` | 3-4x | 3x | Orderbook snapshot sync (expected — Binance diff stream protocol) |
 
 **Resolved (2026-03-13):** Orderbook now receives `exchangeInfo` via `orderbookRawDataAtom` from ConnectionManager. Its `parseRawAvailablePairs` adapter detects the format via duck-typing (`'symbols' in json`), so no package changes were needed. PremiumTable continues to receive `ticker/price` via `premiumTableRawDataAtom` for REST price seeding.

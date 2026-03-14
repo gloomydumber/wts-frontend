@@ -36,16 +36,22 @@ All `atomWithStorage` atoms in wts-frontend and crypto-orderbook now use Jotai's
 - `src/components/widgets/DexWidget/walletManager.ts` — key → `wts:dex:encrypted`
 - `package.json` — bumped crypto-orderbook + premium-table versions
 
-**Known gap — next session plan (Real Centralized Orchestration Layer):**
+**Centralized orchestration completed (same session):**
 
-ConnectionManager currently only covers PremiumTable and Orderbook (npm packages). Native widgets like ChartWidget bypass it entirely — `kline-adapters.ts` calls `fetch()` directly, including `https://api.binance.com/api/v3/exchangeInfo` which duplicates with Orderbook's. The "centralized orchestrator" goal is not yet fully realized.
+All direct `fetch()` calls in `kline-adapters.ts` (13 occurrences across 6 exchange adapters) replaced with `fetchMarketData()` from MarketDataClient. Zero direct `fetch()` calls remain outside MarketDataClient in the entire codebase.
 
-Next session should implement true centralized orchestration:
-1. **Route ALL external REST calls through MarketDataClient** — ChartWidget's `kline-adapters.ts` should use `fetchMarketData()` or `fetchRawExchangeData()` instead of raw `fetch()`. This gets automatic dedup + cache + retry for free.
-2. **Shared metadata endpoints** — `exchangeInfo`, `market/all`, `ticker/price`, etc. should be fetched once and shared across all widgets that need them. ChartWidget's `exchangeInfo` call for symbol validation would be deduped with Orderbook's.
-3. **Widget registration model** — instead of ConnectionManager knowing about specific widgets (premium/orderbook), widgets should declare what exchanges they need and ConnectionManager aggregates. This makes it extensible to future widgets (Screener, Funding, etc.).
-4. **Kline/candlestick data** — unique to ChartWidget, no dedup needed, but should still go through MarketDataClient for retry + caching benefits.
-5. **Audit all `fetch()` calls** — find every direct `fetch()` in native widgets and route through the centralized layer.
+**Dedup now active:**
+- Binance `exchangeInfo`: Orderbook (via ConnectionManager) + Chart `fetchPairs` → **one request**
+- Coinbase `/products`: PremiumTable/Orderbook (via ConnectionManager) + Chart `fetchPairs` → **one request**
+- Upbit `market/all`: PremiumTable/Orderbook (via ConnectionManager) + Chart `fetchPairs` → **one request** (normalized URL, removed `?isDetails=false`)
+- All kline endpoints: unique to Chart, no dedup needed, but get retry + 30s cache
+- All pair endpoints: 5min TTL cache, shared across widgets
+
+**Files changed:**
+- `src/components/widgets/ChartWidget/kline-adapters.ts` — all `fetch()` → `fetchMarketData()`, added `PAIRS_TTL` (5min) and `KLINE_TTL` (30s)
+
+**Remaining future work:**
+- Widget registration model — widgets declare what exchanges they need, ConnectionManager aggregates (extensible to Screener, Funding, etc.)
 
 ---
 

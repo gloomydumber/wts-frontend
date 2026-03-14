@@ -1,4 +1,15 @@
 import type { ExchangeKlineConfig } from './types'
+import { fetchMarketData } from '../../../services/MarketDataClient'
+
+// All REST calls route through MarketDataClient for:
+// - URL-based dedup (fetchPairs shares endpoints with ConnectionManager)
+// - TTL cache (avoid redundant calls during rapid switching)
+// - Retry with exponential backoff on 429/5xx/network errors
+
+/** 5 min TTL for pair lists (stable, shared with other widgets) */
+const PAIRS_TTL = 5 * 60 * 1000
+/** 30s TTL for kline data (time-sensitive, but avoids redundant calls during rapid switching) */
+const KLINE_TTL = 30 * 1000
 
 // ---------------------------------------------------------------------------
 // Binance
@@ -41,8 +52,7 @@ const binance: ExchangeKlineConfig = {
   async fetchKlines(symbol, interval, limit, signal) {
     const mapped = this.intervalMap[interval] ?? '1h'
     const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${mapped}&limit=${limit}`
-    const res = await fetch(url, { signal })
-    const data: unknown[][] = await res.json()
+    const data = await fetchMarketData<unknown[][]>(url, KLINE_TTL, signal)
     return data.map((k) => ({
       time: Math.floor((k[0] as number) / 1000),
       open: Number(k[1]),
@@ -53,12 +63,13 @@ const binance: ExchangeKlineConfig = {
     }))
   },
   async fetchPairs(quote, signal) {
-    const res = await fetch(
+    // Same URL as ConnectionManager's binance:exchangeInfo — deduped by MarketDataClient
+    const data = await fetchMarketData<{ symbols: { baseAsset: string; quoteAsset: string; status: string }[] }>(
       'https://api.binance.com/api/v3/exchangeInfo',
-      { signal },
+      PAIRS_TTL,
+      signal,
     )
-    const data = await res.json()
-    return (data.symbols as { baseAsset: string; quoteAsset: string; status: string }[])
+    return data.symbols
       .filter((s) => s.quoteAsset === quote && s.status === 'TRADING')
       .map((s) => s.baseAsset)
       .sort()
@@ -114,8 +125,7 @@ const bybit: ExchangeKlineConfig = {
   async fetchKlines(symbol, interval, limit, signal) {
     const mapped = this.intervalMap[interval] ?? '60'
     const url = `https://api.bybit.com/v5/market/kline?category=spot&symbol=${symbol}&interval=${mapped}&limit=${limit}`
-    const res = await fetch(url, { signal })
-    const data = await res.json()
+    const data = await fetchMarketData<{ result?: { list?: string[][] } }>(url, KLINE_TTL, signal)
     const list: string[][] = data?.result?.list ?? []
     // Bybit returns descending — reverse
     return list
@@ -131,10 +141,8 @@ const bybit: ExchangeKlineConfig = {
   },
   async fetchPairs(quote, signal) {
     const url = `https://api.bybit.com/v5/market/instruments-info?category=spot`
-    const res = await fetch(url, { signal })
-    const data = await res.json()
-    const list: { baseCoin: string; quoteCoin: string; status: string }[] =
-      data?.result?.list ?? []
+    const data = await fetchMarketData<{ result?: { list?: { baseCoin: string; quoteCoin: string; status: string }[] } }>(url, PAIRS_TTL, signal)
+    const list = data?.result?.list ?? []
     return list
       .filter((s) => s.quoteCoin === quote && s.status === 'Trading')
       .map((s) => s.baseCoin)
@@ -203,8 +211,7 @@ const okx: ExchangeKlineConfig = {
   async fetchKlines(symbol, interval, limit, signal) {
     const mapped = this.intervalMap[interval] ?? '1H'
     const url = `https://www.okx.com/api/v5/market/candles?instId=${symbol}&bar=${mapped}&limit=${limit}`
-    const res = await fetch(url, { signal })
-    const data = await res.json()
+    const data = await fetchMarketData<{ data?: string[][] }>(url, KLINE_TTL, signal)
     const list: string[][] = data?.data ?? []
     // OKX returns descending — reverse
     return list
@@ -220,10 +227,8 @@ const okx: ExchangeKlineConfig = {
   },
   async fetchPairs(quote, signal) {
     const url = `https://www.okx.com/api/v5/public/instruments?instType=SPOT`
-    const res = await fetch(url, { signal })
-    const data = await res.json()
-    const list: { baseCcy: string; quoteCcy: string; state: string }[] =
-      data?.data ?? []
+    const data = await fetchMarketData<{ data?: { baseCcy: string; quoteCcy: string; state: string }[] }>(url, PAIRS_TTL, signal)
+    const list = data?.data ?? []
     return list
       .filter((s) => s.quoteCcy === quote && s.state === 'live')
       .map((s) => s.baseCcy)
@@ -291,8 +296,7 @@ const coinbase: ExchangeKlineConfig = {
     const startMs = Date.now() - Number(granularity) * 1000 * limit
     const start = new Date(startMs).toISOString()
     const url = `https://api.exchange.coinbase.com/products/${symbol}/candles?granularity=${granularity}&start=${start}&end=${end}`
-    const res = await fetch(url, { signal })
-    const data: number[][] = await res.json()
+    const data = await fetchMarketData<number[][]>(url, KLINE_TTL, signal)
     // Coinbase returns descending [time, low, high, open, close, vol]
     return data
       .map((k) => ({
@@ -306,10 +310,12 @@ const coinbase: ExchangeKlineConfig = {
       .reverse()
   },
   async fetchPairs(quote, signal) {
-    const url = `https://api.exchange.coinbase.com/products`
-    const res = await fetch(url, { signal })
-    const data: { base_currency: string; quote_currency: string; status: string }[] =
-      await res.json()
+    // Same URL as ConnectionManager's coinbase:markets — deduped by MarketDataClient
+    const data = await fetchMarketData<{ base_currency: string; quote_currency: string; status: string }[]>(
+      'https://api.exchange.coinbase.com/products',
+      PAIRS_TTL,
+      signal,
+    )
     return data
       .filter((p) => p.quote_currency === quote && p.status === 'online')
       .map((p) => p.base_currency)
@@ -357,15 +363,14 @@ const upbit: ExchangeKlineConfig = {
   async fetchKlines(symbol, interval, limit, signal) {
     const path = this.intervalMap[interval] ?? 'minutes/60'
     const url = `https://api.upbit.com/v1/candles/${path}?market=${symbol}&count=${limit}`
-    const res = await fetch(url, { signal })
-    const data: {
+    const data = await fetchMarketData<{
       candle_date_time_utc: string
       opening_price: number
       high_price: number
       low_price: number
       trade_price: number
       candle_acc_trade_volume: number
-    }[] = await res.json()
+    }[]>(url, KLINE_TTL, signal)
     // Upbit returns descending — reverse
     return data
       .map((k) => ({
@@ -379,9 +384,12 @@ const upbit: ExchangeKlineConfig = {
       .reverse()
   },
   async fetchPairs(quote, signal) {
-    const url = `https://api.upbit.com/v1/market/all?isDetails=false`
-    const res = await fetch(url, { signal })
-    const data: { market: string }[] = await res.json()
+    // Same URL as ConnectionManager's upbit:markets — deduped by MarketDataClient
+    const data = await fetchMarketData<{ market: string }[]>(
+      'https://api.upbit.com/v1/market/all',
+      PAIRS_TTL,
+      signal,
+    )
     return data
       .filter((m) => m.market.startsWith(`${quote}-`))
       .map((m) => m.market.split('-')[1])
@@ -429,8 +437,7 @@ const bithumb: ExchangeKlineConfig = {
   async fetchKlines(symbol, interval, limit, signal) {
     const mapped = this.intervalMap[interval] ?? '1h'
     const url = `https://api.bithumb.com/public/candlestick/${symbol}/${mapped}`
-    const res = await fetch(url, { signal })
-    const data = await res.json()
+    const data = await fetchMarketData<{ data?: number[][] }>(url, KLINE_TTL, signal)
     const list: number[][] = data?.data ?? []
     // Bithumb: [timestamp, open, close, high, low, volume]
     return list
@@ -446,8 +453,7 @@ const bithumb: ExchangeKlineConfig = {
   },
   async fetchPairs(quote, signal) {
     const url = `https://api.bithumb.com/public/ticker/ALL_${quote}`
-    const res = await fetch(url, { signal })
-    const data = await res.json()
+    const data = await fetchMarketData<{ data?: Record<string, unknown> }>(url, PAIRS_TTL, signal)
     const tickers = data?.data ?? {}
     return Object.keys(tickers)
       .filter((k) => k !== 'date')
