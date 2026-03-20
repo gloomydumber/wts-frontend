@@ -4,6 +4,7 @@ import type { Layouts } from 'react-grid-layout'
 import { defaultLayouts, WIDGET_REGISTRY } from '../layout/defaults'
 import type { DexWalletsState, DexSettings } from '../components/widgets/DexWidget/types'
 import type { TotpEntry } from '../components/widgets/TotpWidget/types'
+import type { NewListingSettings } from '../components/widgets/NewListingWidget/types'
 
 // ── Sync hydration ───────────────────────────────────────────────
 // getOnInit: true makes atomWithStorage read localStorage synchronously
@@ -65,3 +66,9 @@ export const dexSettingsAtom = atomWithStorage<DexSettings>('wts:dex:settings', 
 // are as sensitive as API keys — anyone with access can generate valid 2FA codes.
 // See HANDOFF.md "Unified Backup / Restore" for the .wts export/import plan.
 export const totpEntriesAtom = atomWithStorage<TotpEntry[]>('wts:totp:entries', [], undefined, SYNC)
+
+// ── New Listing settings ────────────────────────────────────────────
+const newListingDefault: NewListingSettings = { coins: [], currency: 'KRW' }
+export const newListingSettingsAtom = atomWithStorage<NewListingSettings>(
+  'wts:newlisting:settings', newListingDefault, undefined, SYNC,
+)

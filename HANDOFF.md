@@ -34,6 +34,7 @@ Widgets should be designed with clear data interfaces (TypeScript types for prop
 - [x] ShortcutWidget — quick links to exchange trading pages by ticker
 - [x] ChartWidget — TradingView Advanced Chart embed (free widget, full charting) + Lightweight Charts tab (6 exchange kline REST APIs)
 - [x] TotpWidget — TOTP 2FA code generator (zero npm deps, Web Crypto HMAC-SHA1)
+- [x] NewListingWidget — new listing deposit dashboard with CoinGecko integration, multi-chain hot wallet tracking, KRW/USDT toggle
 - [ ] SnsWidget — real-time SNS feed (Twitter/X API). Paid API — requires X API Pro/Enterprise plan for streaming. Displays filtered tweets by keyword/account for market-moving news
 - [ ] NotificationWidget — strong notification system (telephone calling, SMS, Telegram). Escalating alert chain: Telegram → SMS → phone call spam until acknowledged. Like AWS SNS but for personal trading alerts (price triggers, order fills, system failures)
 - [ ] TrollBoxWidget — real-time chat widget. Channel-based: global channel (all WTS users) + private channels (invite-only). Requires WebSocket backend (Phase 2). Think Bitmex trollbox / Discord-lite embedded in the trading UI
@@ -720,6 +721,7 @@ See [Shared Data Bus](./HANDOFF-PHASE2.md#shared-data-bus-market-data-runtime--t
 | 21 | AppBar + Drawer (port from rgl-practice) | 1 | DONE |
 | 22 | **Build ExchangeWidget** (merged: order, deposit, withdraw, transfer, margin) | 1 | DONE |
 | 23 | Build TotpWidget (TOTP 2FA generator, zero deps) | 1 | DONE |
+| 25 | Build NewListingWidget (deposit dashboard, CoinGecko, multi-chain) | 1 | DONE |
 | 24 | Unified backup/restore (Export/Import .wts file) | 1 | TODO |
 | 12–18 | Tauri integration, Rust backend, DEX, more exchanges | 2–3+ | OUT OF SCOPE — will be done in a separate Tauri project |
 
@@ -871,6 +873,55 @@ Impact: negligible. PremiumTable handles hundreds of WS messages/sec. A 1Hz coun
 ```
 
 Not visible by default — user enables via Drawer when they need it.
+
+---
+
+### NewListingWidget — New Listing Deposit Dashboard
+
+#### Purpose
+
+Track deposit amounts and FDV/Market Cap for newly listed coins by monitoring exchange hot wallet addresses. Designed for short-lived, event-driven use — a few hours around a listing event.
+
+#### Architecture
+
+```
+NewListingWidget/
+├── index.tsx           # Main widget: KRW/USDT toggle, sortable dashboard table
+├── settingsDialog.tsx  # Coin search/register dialog + hot wallet management
+├── coingecko.ts        # CoinGecko search + detail API (real calls, mock fallback)
+├── mockData.ts         # Chain metadata (10 chains), mock deposit generator
+├── utils.ts            # formatUsd, formatKrw, formatTokenAmount, validateAddress
+└── types.ts            # ChainId, RegisteredCoin, DepositEvent, NewListingRow, etc.
+```
+
+#### Coin Registration Flow
+
+Settings dialog (cogwheel) → search CoinGecko → select coin → auto-populate name/symbol/chain/totalSupply/circulatingSupply/FDV → add hot wallet addresses (Enter or "+ Add" button) → Save. Manual entry fallback if CoinGecko is unavailable (CORS/rate-limit).
+
+#### Dashboard Table Columns
+
+Symbol | Chain | Deposited | Dep. Value | MCap | FDV | Dep/FDV | Price | Wallets
+
+- All columns sortable. Default sort: `Dep/FDV` descending.
+- Dep/FDV heatmap: <1% none, 1-5% yellow, 5-10% orange, >10% red.
+- KRW/USDT toggle switches all monetary values. Persisted in `newListingSettingsAtom`.
+
+#### Data Sources
+
+| Data | Phase 1 | Phase 2 |
+|------|---------|---------|
+| Deposits | Mock `setInterval` (15-25s) | Rust monitors hot wallets via chain RPCs |
+| Price/FDV/MCap | CoinGecko API (real, CORS fallback to mock) | CoinGecko/CMC via Rust (no CORS, API key) |
+| KRW price | Mock rate (1380) | Real Upbit/Bithumb REST/WS via Rust |
+
+#### Widget Config
+
+```typescript
+// in defaults.ts WIDGET_REGISTRY
+{ id: 'NewListing', label: 'New Listing', group: 'market', defaultVisible: false, hasSettings: true, refreshable: true }
+```
+
+Not visible by default — user enables via Drawer for listing events.
 
 ---
 

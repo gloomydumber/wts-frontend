@@ -16,6 +16,8 @@ export const WIDGET_REGISTRY: WidgetConfig[] = [
   { id: 'Memo', label: 'Memo', group: 'utilities', defaultVisible: false },
   { id: 'Shortcut', label: 'Shortcut', group: 'utilities', defaultVisible: false },
   { id: 'Totp', label: 'TOTP', group: 'utilities', defaultVisible: false },
+  // Market
+  { id: 'NewListing', label: 'New Listing', group: 'market', defaultVisible: false, hasSettings: true, refreshable: true },
 ]
 
 // Lookup helpers
@@ -45,6 +47,7 @@ const lgLayout: WidgetLayoutItem[] = [
   { i: 'PremiumTable', x: 0, y: 6, w: 4, h: 6, minW: 3 },
   { i: 'ExchangeCalc', x: 0, y: 21, w: 3, h: 6 },
   { i: 'Chart', x: 4, y: 24, w: 8, h: 12 },
+  { i: 'NewListing', x: 0, y: 27, w: 6, h: 8 },
 ]
 
 const mdLayout: WidgetLayoutItem[] = [
@@ -55,6 +58,7 @@ const mdLayout: WidgetLayoutItem[] = [
   { i: 'PremiumTable', x: 0, y: 30, w: 5, h: 9, minW: 3 },
   { i: 'ExchangeCalc', x: 5, y: 30, w: 3, h: 9 },
   { i: 'Chart', x: 0, y: 39, w: 10, h: 10 },
+  { i: 'NewListing', x: 0, y: 49, w: 10, h: 8 },
 ]
 
 const smLayout: WidgetLayoutItem[] = [
@@ -65,6 +69,7 @@ const smLayout: WidgetLayoutItem[] = [
   { i: 'PremiumTable', x: 0, y: 41, w: 6, h: 9 },
   { i: 'ExchangeCalc', x: 0, y: 50, w: 3, h: 9 },
   { i: 'Chart', x: 0, y: 53, w: 6, h: 10 },
+  { i: 'NewListing', x: 0, y: 63, w: 6, h: 8 },
 ]
 
 const xsLayout: WidgetLayoutItem[] = [
@@ -75,6 +80,7 @@ const xsLayout: WidgetLayoutItem[] = [
   { i: 'PremiumTable', x: 0, y: 41, w: 4, h: 9, isResizable: false, isDraggable: false },
   { i: 'ExchangeCalc', x: 0, y: 50, w: 3, h: 9, isResizable: false, isDraggable: false },
   { i: 'Chart', x: 0, y: 59, w: 4, h: 10, isResizable: false, isDraggable: false },
+  { i: 'NewListing', x: 0, y: 69, w: 4, h: 8, isResizable: false, isDraggable: false },
 ]
 
 const xxsLayout: WidgetLayoutItem[] = [
@@ -85,6 +91,7 @@ const xxsLayout: WidgetLayoutItem[] = [
   { i: 'PremiumTable', x: 0, y: 41, w: 2, h: 9, isResizable: false, isDraggable: false },
   { i: 'ExchangeCalc', x: 0, y: 50, w: 2, h: 9, isResizable: false, isDraggable: false },
   { i: 'Chart', x: 0, y: 59, w: 2, h: 10, isResizable: false, isDraggable: false },
+  { i: 'NewListing', x: 0, y: 69, w: 2, h: 8, isResizable: false, isDraggable: false },
 ]
 
 export const defaultLayouts: Layouts = {

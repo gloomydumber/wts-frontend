@@ -24,6 +24,7 @@ import CalculateTwoToneIcon from '@mui/icons-material/CalculateTwoTone'
 import StickyNote2TwoToneIcon from '@mui/icons-material/StickyNote2TwoTone'
 import LaunchTwoToneIcon from '@mui/icons-material/LaunchTwoTone'
 import PasswordTwoToneIcon from '@mui/icons-material/PasswordTwoTone'
+import NewReleasesTwoToneIcon from '@mui/icons-material/NewReleasesTwoTone'
 import WidgetsTwoToneIcon from '@mui/icons-material/WidgetsTwoTone'
 import { useAtom } from 'jotai'
 import type { ComponentType } from 'react'
@@ -46,6 +47,7 @@ const widgetIcons: Record<string, ComponentType<SvgIconProps>> = {
   Memo: StickyNote2TwoToneIcon,
   Shortcut: LaunchTwoToneIcon,
   Totp: PasswordTwoToneIcon,
+  NewListing: NewReleasesTwoToneIcon,
 }
 
 // Group display order and labels
