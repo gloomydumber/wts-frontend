@@ -182,7 +182,7 @@ export default function NewListingWidget() {
                     <td style={{ ...cellStyle, color: ratioColor(row.depositToFdvRatio), fontWeight: 700 }}>
                       {(row.depositToFdvRatio * 100).toFixed(2)}%
                     </td>
-                    <td style={cellStyle}>{fmt(row.priceDisplay)}</td>
+                    <td style={cellStyle}>{currency === 'KRW' ? `₩${row.priceDisplay.toLocaleString()}` : `$${row.priceDisplay.toLocaleString()}`}</td>
                     <td style={cellStyle}>{row.hotWalletCount}</td>
                   </tr>
                 )

@@ -15,6 +15,7 @@ import {
   CircularProgress,
   Divider,
 } from '@mui/material'
+import AddTwoToneIcon from '@mui/icons-material/AddTwoTone'
 import DeleteTwoToneIcon from '@mui/icons-material/DeleteTwoTone'
 import { newListingSettingsAtom } from '../../../store/atoms'
 import { searchCoins, fetchCoinDetail } from './coingecko'
@@ -152,7 +153,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
 
   // ── Save coin ────────────────────────────────────────────────────
   const handleSave = () => {
-    if (!formName || !formSymbol) return
+    if (!formName || !formSymbol || pendingWallets.length === 0) return
     const coin: RegisteredCoin = {
       id: editingCoinId || `coin-${Date.now()}`,
       coingeckoId: formCoingeckoId || undefined,
@@ -415,18 +416,13 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
                     ))}
                   </Select>
                 </Box>
-                <Button
-                  variant="contained"
+                <IconButton
                   size="small"
                   onClick={handleAddWallet}
-                  sx={{
-                    fontSize: '0.6rem', textTransform: 'none', minWidth: 0, px: 1.5, py: 0.5,
-                    mb: addressError ? 2.5 : 0,
-                    bgcolor: 'primary.main', fontWeight: 700,
-                  }}
+                  sx={{ ml: 0.5, mb: addressError ? 2.5 : 0, color: 'primary.main' }}
                 >
-                  + Add
-                </Button>
+                  <AddTwoToneIcon sx={{ fontSize: '1.1rem' }} />
+                </IconButton>
               </Box>
 
               {/* Pending wallets list */}
@@ -449,7 +445,7 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
                   variant="contained"
                   size="small"
                   onClick={handleSave}
-                  disabled={!formName || !formSymbol}
+                  disabled={!formName || !formSymbol || pendingWallets.length === 0}
                   sx={{ fontSize: '0.6rem', textTransform: 'none' }}
                 >
                   {editingCoinId ? 'Update' : 'Save'}
