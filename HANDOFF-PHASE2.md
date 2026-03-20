@@ -292,6 +292,21 @@ Decrypted payload mirrors the vault schema:
 - Backup/restore via unified `.wts` file export
 - See HANDOFF.md for full widget spec
 
+### NewListingWidget — Phase 2 Notes
+
+| Phase 1 (current) | Phase 2 (Rust/Tauri) |
+|-------------------|----------------------|
+| `generateMockDeposit()` setInterval | `invoke('subscribe_deposits', { wallets })` — Rust monitors chain RPCs for real hot wallet deposits |
+| CoinGecko from browser (CORS risk) | CoinGecko/CMC via Rust (no CORS, API key support) |
+| Mock KRW rate (hardcoded 1380) | Real Upbit/Bithumb REST/WS via Rust for live KRW prices |
+| `newListingSettingsAtom` localStorage | Encrypted vault for registered coins and wallet addresses |
+
+- **Real-time deposit monitoring**: Rust subscribes to chain RPCs (EVM `eth_subscribe`, Solana `logsSubscribe`, etc.) for transfer events to/from registered hot wallet addresses
+- **Multi-chain RPC management**: Reuse DEX widget's RPC endpoint settings for chain connections
+- **Price polling**: Periodic CoinGecko/CMC calls from Rust with API key for higher rate limits
+- **KRW price**: Check Upbit/Bithumb if coin is listed for real KRW price (includes kimchi premium), else USD×KRW cross-rate
+- Types stay the same — only data sources change
+
 ### Phase 1 Mock → Phase 2 API Replacement Tracker
 
 Phase 1 uses mock data and placeholder formulas throughout the frontend. This table tracks every mock that must be replaced with a real Tauri `invoke()` → Rust API call in Phase 2. Each entry notes the current mock behavior and the target endpoint.
@@ -317,6 +332,9 @@ Phase 1 uses mock data and placeholder formulas throughout the frontend. This ta
 | **OrderStatusTab** — Real-time WS orders | Not implemented | No live order status updates | Opt-in toggle next to ↻: subscribe to exchange private WS for order events (Binance `userDataStream` executionReport, Bybit order topic, Upbit myOrder, OKX orders channel). Reuses shared data bus connection. Off by default. | `tabs/OrderStatusTab.tsx` |
 | **BalanceTab** — Refresh button | Mock ↻ button | ↻ re-renders with same mock data, logs to console | Phase 2: `invoke('get_balances', { exchange, walletType })`. | `tabs/BalanceTab.tsx` |
 | **BalanceTab** — Real-time WS balance | Not implemented | No live balance updates | Opt-in toggle: subscribe to exchange private WS (Binance `userDataStream`, Upbit `myasset`). Reuses same connection as order fill events. Off by default. | `tabs/BalanceTab.tsx` |
+| **NewListingWidget** — Deposit events | `generateMockDeposit()` setInterval 15-25s | Random amounts appended to ephemeral state, resets on refresh | `invoke('subscribe_deposits', { wallets })` — Rust monitors chain RPCs for real transfer events to hot wallet addresses | `NewListingWidget/index.tsx`, `mockData.ts` |
+| **NewListingWidget** — Coin price/FDV/MCap | CoinGecko browser fetch (CORS risk) | Real CoinGecko API with mock fallback, fetched once at registration | CoinGecko/CMC via Rust with API key, periodic polling for live price updates | `NewListingWidget/coingecko.ts` |
+| **NewListingWidget** — KRW price | Hardcoded `MOCK_KRW_RATE = 1380` | Static USD→KRW conversion | Real Upbit/Bithumb price if coin listed (kimchi premium), else live USD×KRW cross-rate | `NewListingWidget/index.tsx` |
 
 **Pattern for replacement:** Each mock currently lives in either `mockData.ts` (shared data) or inline in the tab component (formulas/handlers). In Phase 2:
 1. Replace `mockData.ts` imports with Tauri `invoke()` calls in a data layer
