@@ -46,6 +46,7 @@ Widgets should be designed with clear data interfaces (TypeScript types for prop
 - [ ] LiquidationWidget — aggregated liquidation level map showing long/short cluster magnets
 - [ ] OnchainWidget — whale movements, exchange inflow/outflow, stablecoin supply, active addresses
 - [ ] MacroWidget — macro dashboard (DXY, 10Y yield, Fear & Greed, BTC dominance, ETF flows)
+- [ ] PredictionWidget — prediction market dashboard (Polymarket, Kalshi). Real-time probability pricing on events that move crypto markets (Fed decisions, ETF approvals, regulations). Free APIs — Polymarket CLOB REST + WS
 
 ### Widget Behavior (Port from `rgl-practice`)
 
@@ -1916,6 +1917,111 @@ MacroWidget/
 
 ```typescript
 { id: 'Macro', label: 'Macro', group: 'market', defaultVisible: false }
+```
+
+---
+
+### PredictionWidget — Prediction Market Dashboard
+
+#### Rationale
+
+Prediction markets (Polymarket, Kalshi) provide real-time probability pricing on events that directly move crypto markets — Fed rate decisions, ETF approvals, regulatory actions, elections, protocol upgrades. Price tells you *what happened*; prediction markets tell you *what the market expects to happen next*. Traders who only watch price charts miss the forward-looking probability context that front-runs 50%+ of major moves.
+
+Complements CalendarWidget (when events happen), MacroWidget (current macro backdrop), and NotificationWidget (alert when probability crosses threshold) with **probability** — how likely the market thinks each event is.
+
+#### Architecture
+
+```
+PredictionWidget/
+├── index.tsx         # Tab container: Markets, Watchlist, Correlation
+├── types.ts          # PredictionMarket, MarketCategory, WatchlistEntry, CorrelationLink
+├── mockData.ts       # Static markets with probabilities, volumes, sparkline history
+├── tabs/
+│   ├── MarketsTab.tsx      # Browse/filter active markets by category
+│   ├── WatchlistTab.tsx    # Pinned markets with compact probability bars
+│   └── CorrelationTab.tsx  # User-tagged "if this → watch that" links
+└── sparkline.ts      # Inline probability history chart (reuse from MacroWidget if extracted)
+```
+
+#### Data Sources
+
+| Source | Type | Cost | Notes |
+|--------|------|------|-------|
+| Polymarket (CLOB API) | Crypto-native (Polygon) | Free | Largest crypto prediction market, REST + WS for live odds |
+| Kalshi | Regulated (US) | Free API | CFTC-regulated, strong on macro/politics events |
+| Metaculus | Community forecasts | Free | Longer-horizon tech/science/AI questions, no real-money trading |
+
+#### Data Model
+
+```typescript
+interface PredictionMarket {
+  id: string
+  source: 'polymarket' | 'kalshi' | 'metaculus'
+  title: string                    // "Fed rate cut by June 2026"
+  category: 'crypto' | 'macro' | 'politics' | 'tech' | 'other'
+  probability: number              // 0-1 (0.72 = 72%)
+  volume: number                   // Total volume traded (USD)
+  liquidity: number                // Current liquidity depth
+  expiryDate: string               // ISO date — when market resolves
+  sparkline: number[]              // 30d probability history
+  outcomes: string[]               // ["Yes", "No"] or multi-outcome
+  url: string                      // Link to market on source platform
+}
+
+interface CorrelationLink {
+  marketId: string                 // Prediction market ID
+  action: string                   // User-defined: "watch BTC/USDT long", "check ETH funding"
+  targetWidget?: string            // Optional: "Chart", "Orderbook" — for cross-widget nav
+  targetPair?: string              // Optional: "BTCUSDT" — auto-navigate on click
+}
+```
+
+#### Tabs
+
+| Tab | Purpose |
+|-----|---------|
+| **Markets** | Browse/filter active markets by category (crypto, macro, politics, tech). Sortable by probability, volume, expiry. Search by keyword. Each row: title, probability bar, volume, expiry countdown |
+| **Watchlist** | Pinned markets — compact probability bars with 30d sparkline. Drag to reorder. Quick-glance "what are the odds right now" for markets the user cares about |
+| **Correlation** | User-tagged links: "if 'Fed rate cut' > 70% → watch BTC/USDT long". Maps prediction market events to trading actions. Click link to navigate to target widget/pair |
+
+#### Phase 1 Implementation
+
+- **Mock data**: 15-20 static markets across categories with realistic probabilities, volumes, and 30d sparkline arrays
+- **MarketsTab**: filterable/sortable table, category chips, search input
+- **WatchlistTab**: localStorage-persisted pinned market IDs, compact card layout with probability bars
+- **CorrelationTab**: user creates links (market → action text + optional target widget/pair), stored in localStorage
+- **Click market row**: expand to show 30d probability chart in popover + link to source platform
+- **No API calls in Phase 1** — all data static, but realistic values matching real Polymarket/Kalshi markets
+
+#### UX
+
+```
+┌─ Prediction ─────────────────────────────────────────────┐
+│  [Markets] [Watchlist] [Correlation]                      │
+│                                                           │
+│  Category: [All ▼]  Sort: [Volume ▼]  🔍 Search...      │
+│                                                           │
+│  Fed rate cut by June 2026                                │
+│  ██████████████░░░░░░  72%    $14.2M vol   89d left      │
+│                                                           │
+│  BTC ETF options approved 2026                            │
+│  ████████████░░░░░░░░  61%    $8.7M vol    142d left     │
+│                                                           │
+│  ETH below $1500 by Q3 2026                               │
+│  ████░░░░░░░░░░░░░░░░  18%    $3.1M vol    195d left     │
+│                                                           │
+│  Solana ETF approved 2026                                 │
+│  ████████░░░░░░░░░░░░  42%    $5.4M vol    284d left     │
+│                                                           │
+│  US crypto regulatory bill passed                         │
+│  ██████████░░░░░░░░░░  53%    $2.8M vol    67d left      │
+└───────────────────────────────────────────────────────────┘
+```
+
+#### Widget Config
+
+```typescript
+{ id: 'Prediction', label: 'Prediction', group: 'market', defaultVisible: false }
 ```
 
 ---

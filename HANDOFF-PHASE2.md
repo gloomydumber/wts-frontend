@@ -792,3 +792,28 @@ See HANDOFF.md for full widget spec (architecture, metrics, Phase 1 implementati
 
 Most data sources are free — this widget is cheap to make fully live in Phase 2.
 
+---
+
+### PredictionWidget — Phase 2 Notes
+
+See [HANDOFF.md — PredictionWidget](./HANDOFF.md#predictionwidget--prediction-market-dashboard) for full widget spec (architecture, data model, tabs, Phase 1 implementation, UX).
+
+#### Phase 2 Data Sources
+
+| Source | Cost | API |
+|--------|------|-----|
+| Polymarket CLOB API | Free | REST: `GET /markets`, `GET /prices-history`. WS: live price stream on Polygon CLOB |
+| Kalshi | Free | REST: `GET /markets`, `GET /events`. WS: orderbook + trade stream |
+| Metaculus | Free | REST: `GET /questions/` with filters |
+
+#### Phase 2 Enhancements
+
+- **Live data**: Polymarket REST polling (60s) + WS for watchlisted markets (real-time probability updates)
+- **Cross-widget integration**:
+  - CalendarWidget event → auto-link to matching prediction market (fuzzy match on event title/date)
+  - NotificationWidget → "alert me when 'Fed rate cut' probability crosses 80%" — Rust alert engine evaluates against live probability feed
+  - ChartWidget → overlay prediction market probability as secondary Y-axis on price chart (e.g., "BTC ETF approval" probability vs BTC/USDT price)
+- **DEX integration**: Polymarket runs on Polygon — DexWidget's wallet infrastructure can support buying/selling outcome shares directly from within WTS
+- **PortfolioWidget**: track prediction market positions (outcome token balances) alongside CEX/DEX holdings
+- **Historical replay**: "what happened to BTC price when this market's probability spiked?" — link to ChartWidget at that timestamp
+
